@@ -237,6 +237,12 @@ namespace casadi {
               const std::string& A, const std::string& x_opt,
               const std::string& dlam, int mode) const;
 
+    // Solve the LP subproblem
+    void codegen_lp_solve(CodeGenerator& cg, const std::string& g,
+              const std::string& lbdz, const std::string& ubdz,
+              const std::string& A, const std::string& x_opt,
+              const std::string& dlam, int mode) const;
+
     void codegen_tr_update(CodeGenerator& cg,
       const std::string& tr_rad, const std::string& tr_ratio) const;
 

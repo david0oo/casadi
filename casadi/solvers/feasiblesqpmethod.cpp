@@ -1867,8 +1867,10 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
       //   ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
       //            d->dx, d->dlam, 0);
       // }
+      g << "if (" << use_sqp_ << ") {\n";
       g.comment("Solve the QP");
       codegen_qp_solve(g, "d.Bk", "d.gf", "d.lbdz", "d.ubdz", "d.Jk", "d.dx", "d.dlam", 0);
+      g << "}\n;";
 
       // // Eval quadratic model and check for convergence
       // m_k = eval_m_k(mem);
@@ -1891,8 +1893,17 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
       //     if (print_status_) print("WARNING(feasiblesqpmethod): Indefinite Hessian detected\n");
       //   }
       // }
+
       g.comment("Detecting indefiniteness");
-      g.comment("TBD");
+      g << "if (" << use_sqp_ << ") {\n";
+      g << "double gain = " << g.bilin("d.Bk", Hsp_, "d.dx", "d.dx") << ";\n";
+      g << "if (gain < 0) {\n";
+      g << "if (" << print_status_ << ") {\n";
+      g << "printf(\"WARNING(feasiblesqpmethod): Indefinite Hessian detected\\n\");\n";
+      g << "}\n";
+      g << "}\n";
+      g << "}\n";
+      // g.comment("TBD");m
 
       // Do the feasibility iterations here
       // ret = feasibility_iterations(mem, tr_rad);
@@ -1985,6 +1996,31 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
     cg << "if (ret == -1000) return -1000;\n"; // equivalent to raise Exception
   }
 
+  void Feasiblesqpmethod::codegen_lp_solve(CodeGenerator& cg,
+              const std::string& g,
+              const std::string&  lbdz, const std::string& ubdz,
+              const std::string&  A, const std::string& x_opt,
+              const std::string&  dlam, int mode) const {
+    for (casadi_int i=0;i<qpsol_.n_in();++i) cg << "m_arg[" << i << "] = 0;\n";
+    cg << "m_arg[" << CONIC_H << "] = " << NULL << ";\n";
+    cg << "m_arg[" << CONIC_G << "] = " << g << ";\n";
+    cg << "m_arg[" << CONIC_X0 << "] = " << x_opt << ";\n";
+    cg << "m_arg[" << CONIC_LAM_X0 << "] = " << dlam << ";\n";
+    cg << "m_arg[" << CONIC_LAM_A0 << "] = " << dlam << "+" << nx_ << ";\n";
+    cg << "m_arg[" << CONIC_LBX << "] = " << lbdz << ";\n";
+    cg << "m_arg[" << CONIC_UBX << "] = " << ubdz << ";\n";
+    cg << "m_arg[" << CONIC_A << "] = " << A << ";\n";
+    cg << "m_arg[" << CONIC_LBA << "] = " << lbdz << "+" << nx_ << ";\n";
+    cg << "m_arg[" << CONIC_UBA << "] = " << ubdz << "+" << nx_ << ";\n";
+    for (casadi_int i=0;i<qpsol_.n_out();++i) cg << "m_res[" << i << "] = 0;\n";
+    cg << "m_res[" << CONIC_X << "] = " << x_opt << ";\n";
+    cg << "m_res[" << CONIC_LAM_X << "] = " << dlam << ";\n";
+    cg << "m_res[" << CONIC_LAM_A << "] = " << dlam << "+" << nx_ << ";\n";
+    std::string flag = cg(qpsol_, "m_arg", "m_res", "m_iw", "m_w");
+    cg << "ret = " << flag << ";\n";
+    cg << "if (ret == -1000) return -1000;\n"; // equivalent to raise Exception
+  }
+
   void Feasiblesqpmethod::codegen_tr_update(CodeGenerator& cg,
       const std::string& tr_rad, const std::string& tr_ratio) const {
     cg << "if (tr_ratio < " << tr_eta1_ << ") {\n";
@@ -2004,8 +2040,12 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
   // } else {
   //   return casadi_dot(nx_, d->gf, d->dx);
   // }
+  cg << "if (" << use_sqp_ << ") {\n";
   cg << "m_k = 0.5*" << cg.bilin("d.Bk", Hsp_, "d.dx", "d.dx")
      << "+" << cg.dot(nx_, "d.gf", "d.dx") << ";\n";
+  cg << "} else {\n";
+  cg << "m_k =" << cg.dot(nx_, "d.gf", "d.dx") << ";\n";
+  cg << "}\n";
 }
 
   void Feasiblesqpmethod::codegen_eval_tr_ratio(CodeGenerator& cg,
@@ -2183,10 +2223,10 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
     // if (use_sqp_) {
     //   casadi_mv(d->Bk, Hsp_, d->z_tmp, d->gf_feas, true);
     // }
+    cg << "if (" << use_sqp_ << ") {\n";
     cg.comment("Just SQP implemented so far!");
-    // cg << "if (" << use_sqp_ << ") {\n";
     cg << cg.mv("d.Bk", Hsp_, "d.z_tmp", "d.gf_feas", true) << "\n";
-    // cg << "}\n";
+    cg << "}\n";
 
     // create bounds of correction QP -----------------------------
     // upper bounds of constraints
@@ -2248,9 +2288,11 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
     //   int ret = solve_LP(m, d->gf_feas, d->lbdz_feas, d->ubdz_feas,
     //     d->Jk, d->dx_feas, d->dlam_feas, 0);
     // }
+    cg << "if (" << use_sqp_ << ") {\n";
     cg.comment("Just SQP implemented. Solve the feasible QP");
     codegen_qp_solve(cg, "d.Bk", "d.gf_feas", "d.lbdz_feas", "d.ubdz_feas",
                          "d.Jk", "d.dx_feas", "d.dlam_feas", 0);
+    cg << "}\n";
 
 
     // step_inf_norm = casadi_masked_norm_inf(nx_, d->dx_feas, d->tr_mask);
