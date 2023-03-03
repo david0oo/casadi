@@ -1739,6 +1739,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         //     casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
         //   }
         // }
+        g << "if (" << use_sqp_ << ") {\n";
         g.comment("Just exact Hessian implemented, GN would be possible!");
         g << "m_arg[0] = d_nlp.z;\n";
         g << "m_arg[1] = m_p;\n";
@@ -1748,6 +1749,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         nlp_hess_l = g(get_function("nlp_hess_l"), "m_arg", "m_res", "m_iw", "m_w");
         // g << "if (" + nlp_hess_l + ") return 1;\n";
         g << "if (" + nlp_hess_l + ") return 70;\n";
+      g << "}\n";
 
       // }
       g << "}\n";
