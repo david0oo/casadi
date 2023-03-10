@@ -1159,6 +1159,7 @@ if(WITH_UNO)
         GIT_TAG ${BUILD_UNO_VERSION}
         PREFIX "${CMAKE_BINARY_DIR}/external_projects"
         UPDATE_COMMAND ""
+        BUILD_ALWAYS ON
         CMAKE_COMMAND "${EXTERNAL_CMAKE_COMMAND}"
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>)
     message("test ${CMAKE_CURRENT_BINARY_DIR}/external_projects")
