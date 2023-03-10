@@ -678,6 +678,11 @@ if(WITH_BLOCKSQP)
 endif()
 add_feature_info(blocksqp-interface WITH_BLOCKSQP "Interface to the NLP solver blockSQP.")
 
+option(WITH_UNO "Compile the interface to UNO" ON)
+set(BUILD_UNO_GIT_REPO "https://github.com/jgillis/Uno.git")
+set(BUILD_UNO_VERSION "main")
+option(WITH_BUILD_UNO "Build UNO (BUILD_UNO_VERSION=${BUILD_UNO_VERSION}) from downloaded source (BUILD_UNO_GIT_REPO=${BUILD_UNO_GIT_REPO})." OFF)
+
 # IPOPT: A sparse interior point NLP solver with filter line-search
 option(WITH_IPOPT "Compile the interface to IPOPT" ${WITH_IPOPT_DEF})
 set(BUILD_IPOPT_GIT_REPO "https://github.com/jgillis/Ipopt-1.git")
@@ -1146,6 +1151,29 @@ set(COIN_FLAGS "")
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 set(COIN_FLAGS "--enable-debug")
 endif()
+
+if(WITH_UNO)
+  if(WITH_BUILD_UNO)
+    ExternalProject_Add(uno-external
+        GIT_REPOSITORY ${BUILD_UNO_GIT_REPO}
+        GIT_TAG ${BUILD_UNO_VERSION}
+        PREFIX "${CMAKE_BINARY_DIR}/external_projects"
+        UPDATE_COMMAND ""
+        CMAKE_COMMAND "${EXTERNAL_CMAKE_COMMAND}"
+        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>)
+    message("test ${CMAKE_CURRENT_BINARY_DIR}/external_projects")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/external_projects")
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include/uno")
+
+    add_library(uno SHARED IMPORTED)
+    add_dependencies(uno uno-external)
+    set_target_properties(uno PROPERTIES
+      IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_SHARED_LIBRARY_PREFIX}uno${CMAKE_STATIC_LIBRARY_SUFFIX}"
+      INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include/uno"
+    )
+  endif()
+endif()
+add_feature_info(uno-interface WITH_UNO "Interface to the NLP solver UNO.")
 
 
 if(WITH_IPOPT)
