@@ -27,8 +27,8 @@
 #define CASADI_UNO_INTERFACE_HPP
 
 #include <casadi/interfaces/uno/casadi_nlpsol_uno_export.h>
-#include <uno/optimization/Model.hpp>
-#include <uno/linear_algebra/RectangularMatrix.hpp>
+#include <optimization/Model.hpp>
+#include <linear_algebra/RectangularMatrix.hpp>
 
 #include "casadi/core/nlpsol_impl.hpp"
 
