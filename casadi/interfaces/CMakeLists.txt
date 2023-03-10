@@ -109,6 +109,10 @@ if(WITH_OSQP)
   add_subdirectory(osqp)
 endif()
 
+if(WITH_UNO)
+  add_subdirectory(uno)
+endif()
+
 if(WITH_LINT)
   set(LINT_TARGETS ${LINT_TARGETS} PARENT_SCOPE)
 endif()
