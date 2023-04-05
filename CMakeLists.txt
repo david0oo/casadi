@@ -1161,7 +1161,7 @@ if(WITH_UNO)
         UPDATE_COMMAND ""
         BUILD_ALWAYS ON
         CMAKE_COMMAND "${EXTERNAL_CMAKE_COMMAND}"
-        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>)
+        CMAKE_ARGS -DCMAKE_LIBRARY_PATH=/home/david/bqpd -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> "-DCMAKE_CXX_FLAGS=-fPIC -lbqpd -L/home/david/bqpd" -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_Fortran_FLAGS="-fPIC")
     message("test ${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include/uno")
@@ -1172,7 +1172,8 @@ if(WITH_UNO)
       IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_SHARED_LIBRARY_PREFIX}uno${CMAKE_STATIC_LIBRARY_SUFFIX}"
       INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/external_projects/include/uno"
     )
-    target_compile_features(uno INTERFACE cxx_std_17)
+
+    # target_compile_features(uno INTERFACE cxx_std_17)
   endif()
 endif()
 add_feature_info(uno-interface WITH_UNO "Interface to the NLP solver UNO.")

@@ -22,7 +22,26 @@
  *
  */
 
+//Inclued UNO files
+#include "tools/Options.hpp"
+#include "tools/Timer.hpp"
 
+#include "optimization/Iterate.hpp"
+#include "optimization/ModelFactory.hpp"
+#include "optimization/ScaledModel.hpp"
+#include "preprocessing/Preprocessing.hpp"
+#include "linear_algebra/CSCSymmetricMatrix.hpp"
+
+#include "ingredients/globalization_strategy/GlobalizationStrategyFactory.hpp"
+#include "ingredients/globalization_mechanism/GlobalizationMechanismFactory.hpp"
+#include "ingredients/constraint_relaxation_strategy/ConstraintRelaxationStrategyFactory.hpp"
+
+#include "tools/Logger.hpp"
+
+#include "Uno.hpp"
+Level Logger::logger_level = INFO;
+
+// Casadi Includes
 #include "uno_interface.hpp"
 #include "casadi/core/casadi_misc.hpp"
 #include <ctime>
@@ -31,20 +50,6 @@
 #include <algorithm>
 
 #include <type_traits>
-
-//Inclued UNO files
-#include "optimization/Iterate.hpp"
-#include "optimization/ModelFactory.hpp"
-#include "preprocessing/Preprocessing.hpp"
-#include "linear_algebra/CSCSymmetricMatrix.hpp"
-
-#include "ingredients/globalization_strategy/GlobalizationStrategyFactory.hpp"
-#include "ingredients/globalization_mechanism/GlobalizationMechanismFactory.hpp"
-#include "ingredients/constraint_relaxation_strategy/ConstraintRelaxationStrategyFactory.hpp"
-
-#include "tools/Options.hpp"
-#include "Uno.hpp"
-#include "tools/Timer.hpp"
 
 
 namespace casadi {
@@ -189,7 +194,6 @@ namespace casadi {
   void CasadiModel::evaluate_lagrangian_hessian(const std::vector<double>& x, double objective_multiplier, const std::vector<double>& multipliers,
          SymmetricMatrix<double>& hessian) const {
     
-
     // scale by the objective sign
     objective_multiplier *= this->objective_sign;
     // Sparsity Hsp = mem_->self.get_function("nlp_hess_l").sparsity_out(0);
@@ -362,13 +366,15 @@ namespace casadi {
 
   //  // reformulate (scale, add slacks) if necessary
   //  std::unique_ptr<Model> model = ModelFactory::reformulate(ampl_model, first_iterate, options);
-   std::unique_ptr<Model> model = ModelFactory::reformulate(&m->model, first_iterate, uno_options);
+  //  std::unique_ptr<Model> model = ModelFactory::reformulate(m->model, first_iterate, uno_options);
+      std::unique_ptr<Model> model = std::make_unique<ScaledModel>(*m->model, first_iterate, uno_options);
 
   //  // enforce linear constraints at initial point
   //  if (options.get_bool("enforce_linear_constraints")) {
   //     Preprocessing::enforce_linear_constraints(options, *model, first_iterate.primals, first_iterate.multipliers);
   //  }
    if (uno_options.get_bool("enforce_linear_constraints")) {
+      // Preprocessing::enforce_linear_constraints(uno_options, *model, first_iterate.primals, first_iterate.multipliers);
       Preprocessing::enforce_linear_constraints(uno_options, *model, first_iterate.primals, first_iterate.multipliers);
    }
 

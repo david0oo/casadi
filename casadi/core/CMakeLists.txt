@@ -266,3 +266,5 @@ if(INSTALL_INTERNAL_HEADERS)
     DESTINATION ${INCLUDE_PREFIX}/casadi/core
   )
 endif()
+
+target_compile_features(casadi INTERFACE cxx_std_17)
