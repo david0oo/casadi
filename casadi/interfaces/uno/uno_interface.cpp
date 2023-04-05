@@ -30,6 +30,23 @@
 #include <cstdlib>
 #include <algorithm>
 
+#include <type_traits>
+
+//Inclued UNO files
+#include "optimization/Iterate.hpp"
+#include "optimization/ModelFactory.hpp"
+#include "preprocessing/Preprocessing.hpp"
+#include "linear_algebra/CSCSymmetricMatrix.hpp"
+
+#include "ingredients/globalization_strategy/GlobalizationStrategyFactory.hpp"
+#include "ingredients/globalization_mechanism/GlobalizationMechanismFactory.hpp"
+#include "ingredients/constraint_relaxation_strategy/ConstraintRelaxationStrategyFactory.hpp"
+
+#include "tools/Options.hpp"
+#include "Uno.hpp"
+#include "tools/Timer.hpp"
+
+
 namespace casadi {
 
   extern "C"
@@ -49,6 +66,10 @@ namespace casadi {
     Nlpsol::registerPlugin(casadi_register_nlpsol_uno);
   }
 
+  /*---------------------------------------------
+  Constructor Destructor UnoInterface
+  ----------------------------------------------*/
+
   UnoInterface::UnoInterface(const std::string& name, const Function& nlp)
     : Nlpsol(name, nlp) {
   }
@@ -66,6 +87,185 @@ namespace casadi {
      }
   };
 
+  UnoMemory::UnoMemory(const UnoInterface& uno_interface) : self(uno_interface), NlpsolMemory() {
+    
+  }
+
+  UnoMemory::~UnoMemory() {
+    
+  }
+
+  /*----------------------------------------------------------------
+  From here CasadiModel function definition
+  ---------------------------------------------------------------*/
+
+  CasadiModel::CasadiModel(const std::string& file_name, const UnoInterface& uno_interface, UnoMemory* mem) :
+    Model(file_name, uno_interface.nx_, uno_interface.ng_, NONLINEAR),
+    mem_(mem),
+    // allocate vectors
+    casadi_tmp_gradient(this->number_variables),
+    casadi_tmp_constraint_jacobian(mem->self.get_function("nlp_jac_g").sparsity_out(0).nnz()),
+    casadi_tmp_hessian(mem->self.get_function("nlp_hess_l").sparsity_out(0).nnz()) {
+    
+  }
+
+  /* ------- Define functions to evalute solver functions  -----------*/
+  double CasadiModel::evaluate_objective(const std::vector<double>& x) const {
+
+    double obj;
+    mem_->arg[0] = get_ptr(x);
+    mem_->arg[1] = mem_->d_nlp.p;
+    mem_->res[0] = &obj;
+    casadi_assert(mem_->self.calc_function(mem_, "nlp_f")==0, "Failed to evaluate objective function.");
+    return obj;
+  }
+
+  void CasadiModel::evaluate_objective_gradient(const std::vector<double>& x, SparseVector<double>& gradient) const {
+
+    // Evaluate the objective gradient
+    mem_->arg[0] = get_ptr(x);
+    mem_->arg[1] = mem_->d_nlp.p;
+    mem_->res[0] = nullptr;
+    mem_->res[1] = get_ptr(casadi_tmp_gradient);
+    casadi_assert(mem_->self.calc_function(mem_, "nlp_grad_f")==0, "Failed to evaluate gradient of objective.");
+
+    // Write everything into the SparseVector
+    for (unsigned int index = 0; index < this->number_variables; ++index){
+      // Is the index correct? Start counting at zero?
+      gradient.insert(index, casadi_tmp_gradient[index]);
+    }
+  }
+
+  void CasadiModel::evaluate_constraints(const std::vector<double>& x, std::vector<double>& constraints) const {
+
+    mem_->arg[0] = get_ptr(x);
+    mem_->arg[1] = mem_->d_nlp.p;
+    mem_->res[0] = get_ptr(constraints);
+    casadi_assert(mem_->self.calc_function(mem_, "nlp_g")==0, "Failed to evaluate constraints.");
+  }
+
+  void CasadiModel::evaluate_constraint_gradient(const std::vector<double>& x, size_t j, SparseVector<double>& gradient) const {
+    // Sparsity pattern of jacobian is saved in mem->self ...
+    // Sparsity Asp = mem_->self.get_function("nlp_jac_g").sparsity_out(0);
+    // Evaluate numerically
+      mem_->arg[0] = get_ptr(x);
+      mem_->arg[1] = mem_->d_nlp.p;
+      mem_->res[0] = nullptr;
+      mem_->res[1] = get_ptr(casadi_tmp_constraint_jacobian);
+      casadi_assert(mem_->self.calc_function(mem_, "nlp_jac_g")==0, "Failed to evaluate constraint jacobian.");
+
+      // Write everything into RectangularMatrix...
+      gradient.clear();
+      for (size_t k= mem_->self.jacg_sp_.colind()[j]; k< mem_->self.jacg_sp_.colind()[j + 1];++k) {
+        const size_t i = mem_->self.jacg_sp_.row()[k];
+        const double entry = casadi_tmp_hessian[k];
+        gradient.insert(i, entry);
+      }
+  }
+
+  void CasadiModel::evaluate_constraint_jacobian(const std::vector<double>& x, RectangularMatrix<double>& constraint_jacobian) const {
+    // Sparsity pattern of jacobian is saved in mem->self ...
+    // Sparsity Asp = mem_->self.get_function("nlp_jac_g").sparsity_out(0);
+    // Evaluate numerically
+      mem_->arg[0] = get_ptr(x);
+      mem_->arg[1] = mem_->d_nlp.p;
+      mem_->res[0] = nullptr;
+      mem_->res[1] = get_ptr(casadi_tmp_constraint_jacobian);
+      casadi_assert(mem_->self.calc_function(mem_, "nlp_jac_g")==0, "Failed to evaluate constraint jacobian.");
+
+      // Write everything into RectangularMatrix...
+      size_t n_columns = constraint_jacobian.size();
+      for (size_t j=0; j<n_columns; ++j) {
+
+        constraint_jacobian[j].clear();
+        for (size_t k= mem_->self.jacg_sp_.colind()[j]; k< mem_->self.jacg_sp_.colind()[j + 1];++k) {
+          const size_t i = mem_->self.jacg_sp_.row()[k];
+          const double entry = casadi_tmp_hessian[k];
+          constraint_jacobian[j].insert(i, entry);
+        }
+      }
+  }
+
+  void CasadiModel::evaluate_lagrangian_hessian(const std::vector<double>& x, double objective_multiplier, const std::vector<double>& multipliers,
+         SymmetricMatrix<double>& hessian) const {
+    
+
+    // scale by the objective sign
+    objective_multiplier *= this->objective_sign;
+    // Sparsity Hsp = mem_->self.get_function("nlp_hess_l").sparsity_out(0);
+    // Evaluate numerically
+    mem_->arg[0] = get_ptr(x);
+    mem_->arg[1] = mem_->d_nlp.p;
+    mem_->arg[2] = &objective_multiplier;
+    mem_->arg[3] = get_ptr(multipliers);
+    mem_->res[0] = get_ptr(casadi_tmp_hessian);
+    casadi_assert(mem_->self.calc_function(mem_, "nlp_hess_l")==0, "Failed to evaluate Lagrangian hessian.");
+
+    hessian.reset();
+    // Write the hessian into Symmetric matrix ....
+    for (size_t j=0; j<this->number_variables;++j) {
+      for (size_t k=mem_->self.hesslag_sp_.colind()[j]; k< mem_->self.hesslag_sp_.colind()[j + 1];++k) {
+         const size_t i = mem_->self.hesslag_sp_.row()[k];
+         const double entry = casadi_tmp_hessian[k];
+         hessian.insert(entry, i, j);
+      }
+      hessian.finalize_column(j);
+   }
+  }
+
+  double CasadiModel::get_variable_lower_bound(size_t i) const {
+    return this->variables_bounds[i].lb;//mem_->d_nlp.lbz[i];
+  }
+
+  double CasadiModel::get_variable_upper_bound(size_t i) const {
+    return this->variables_bounds[i].ub;//mem_->d_nlp.ubz[i];
+  }
+
+  BoundType CasadiModel::get_variable_bound_type(size_t i) const {
+    return this->variable_status[i];
+  }
+
+  double CasadiModel::get_constraint_lower_bound(size_t j) const {
+    return this->constraint_bounds[j].lb;//mem_->d_nlp.lbz[j+this->number_variables];
+  }
+
+  double CasadiModel::get_constraint_upper_bound(size_t j) const {
+    return this->constraint_bounds[j].ub;//mem_->d_nlp.ubz[j+this->number_variables];
+  }
+
+  FunctionType CasadiModel::get_constraint_type(size_t j) const {
+    return this->constraint_type[j];
+  }
+  BoundType CasadiModel::get_constraint_bound_type(size_t j) const {
+    return this->constraint_status[j];
+  }
+
+  size_t CasadiModel::get_maximum_number_objective_gradient_nonzeros() const {
+    return 0;
+  }
+  size_t CasadiModel::get_maximum_number_jacobian_nonzeros() const {
+    return 0;
+  }
+  size_t CasadiModel::get_maximum_number_hessian_nonzeros() const {
+    return 0;
+  }
+
+   void CasadiModel::get_initial_primal_point(std::vector<double>& x) const {
+    assert(x.size() >= this->number_variables);
+   }
+   void CasadiModel::get_initial_dual_point(std::vector<double>& multipliers) const {
+    assert(multipliers.size() >= this->number_constraints);
+   }
+   void CasadiModel::postprocess_solution(Iterate& iterate, TerminationStatus termination_status) const {
+    // do nothing
+   }
+
+
+
+  /*-------------------------------------------
+  UnoInterface function definitions
+  -------------------------------------------*/
+
   void UnoInterface::init(const Dict& opts) {
     // Call the init method of the base class
     Nlpsol::init(opts);
@@ -75,18 +275,18 @@ namespace casadi {
       if (op.first=="uno") {
         opts_ = op.second;
       }
+
     }
 
     // Setup NLP functions
     create_function("nlp_fg", {"x", "p"}, {"f", "g"});
     Function gf_jg_fcn = create_function("nlp_gf_jg", {"x", "p"}, {"grad:f:x", "jac:g:x"});
     jacg_sp_ = gf_jg_fcn.sparsity_out(1);
+
     Function hess_l_fcn = create_function("nlp_hess_l", {"x", "p", "lam:f", "lam:g"},
                                   {"hess:gamma:x:x"},
                                   {{"gamma", {"f", "g"}}});
     hesslag_sp_ = hess_l_fcn.sparsity_out(0);
-
-
 
     // Allocate persistent memory
     alloc_w(nx_, true); // wlbx_
@@ -97,12 +297,19 @@ namespace casadi {
 
   int UnoInterface::init_mem(void* mem) const {
     return Nlpsol::init_mem(mem);
-    //auto m = static_cast<UnoMemory*>(mem);
+    auto m = static_cast<UnoMemory*>(mem);
 
-    // Commented out since I have not found out how to change the bounds
-    // Allocate KNITRO memory block
-    //  m.kc = KN_new();
-  }
+
+// -------------------------------------------------------------------
+
+   // Casadi model
+   // memory should be freed somewhere else
+   m->model = new CasadiModel("casadi_model", *this, m);
+
+}
+//----------------------------------------------------------
+
+  // }
 
   void UnoInterface::set_work(void* mem, const double**& arg, double**& res,
                                  casadi_int*& iw, double*& w) const {
@@ -111,11 +318,6 @@ namespace casadi {
     // Set work in base classes
     Nlpsol::set_work(mem, arg, res, iw, w);
 
-    // Copy inputs to temporary arrays
-    m->wlbx = w; w += nx_;
-    m->wubx = w; w += nx_;
-    m->wlbg = w; w += ng_;
-    m->wubg = w; w += ng_;
   }
 
   int casadi_KN_puts(const char * const str, void * const userParams) {
@@ -124,351 +326,87 @@ namespace casadi {
     return s.size();
   }
 
+  ::Options rewrite_options(const Dict& options){
+    	// This function writes the casadi options into UNO options
+      ::Options uno_options;
+      Dict::const_iterator  it;
+      for (it = options.begin(); it != options.end(); it++)
+      {
+          // static_assert(std::is_same<decltype(it->second), std::string>::value, "type must be 'std::string'"); 
+          uno_options[it->first] = uno_options[it->second];
+      }
+      return uno_options;
+  }
+
   int UnoInterface::solve(void* mem) const {
     auto m = static_cast<UnoMemory*>(mem);
     auto d_nlp = &m->d_nlp;
-    casadi_int status;
 
-    // Allocate KNITRO memory block (move back to init!)
-    casadi_assert_dev(m->kc==nullptr);
-    status = KN_new(&m->kc);
-    casadi_assert_dev(m->kc!=nullptr);
+    // CasadiModel casadi_model = &m->model;
 
-    status = KN_set_puts_callback(m->kc, casadi_KN_puts, nullptr);
-    casadi_assert(status == 0, "KN_set_puts_callback failed");
+    //Define options file..so far a bit cheated
+    ::Options uno_options = rewrite_options(opts_);
 
-    // Jacobian sparsity
-    std::vector<int> Jcol, Jrow;
-    if (!jacg_sp_.is_null()) {
-      assign_vector(jacg_sp_.get_col(), Jcol);
-      assign_vector(jacg_sp_.get_row(), Jrow);
-    }
+   // initialize initial primal and dual points
+  //  Iterate first_iterate(ampl_model.number_variables, ampl_model.number_constraints);
+   Iterate first_iterate(m->model->number_variables, m->model->number_constraints);
 
-    // Hessian sparsity
-    casadi_int nnzH = hesslag_sp_.is_null() ? 0 : hesslag_sp_.nnz();
-    std::vector<int> Hcol, Hrow;
-    if (nnzH>0) {
-      assign_vector(hesslag_sp_.get_col(), Hcol);
-      assign_vector(hesslag_sp_.get_row(), Hrow);
-      status = KN_set_int_param(m->kc, KN_PARAM_HESSOPT, KN_HESSOPT_EXACT);
-      casadi_assert(status==0, "KN_set_int_param failed");
-    } else {
-      status = KN_set_int_param(m->kc, KN_PARAM_HESSOPT, KN_HESSOPT_LBFGS);
-      casadi_assert(status==0, "KN_set_int_param failed");
-    }
+  //  ampl_model.get_initial_primal_point(first_iterate.primals);
+   m->model->get_initial_primal_point(first_iterate.primals);
 
-    // Pass user set options
-    for (auto&& op : opts_) {
-      int param_id;
-      casadi_assert(KN_get_param_id(m->kc, op.first.c_str(), &param_id)==0,
-        "Unknown parameter '" + op.first + "'.");
+  //  ampl_model.get_initial_dual_point(first_iterate.multipliers.constraints);
+   m->model->get_initial_dual_point(first_iterate.multipliers.constraints);
 
-      int param_type;
-      casadi_assert(!KN_get_param_type(m->kc, param_id, &param_type),
-        "Error when setting option '" + op.first + "'.");
+  //  ampl_model.project_primals_onto_bounds(first_iterate.primals);
+   m->model->project_primals_onto_bounds(first_iterate.primals);
 
-      switch (param_type) {
-        case KN_PARAMTYPE_INTEGER:
-          casadi_assert(!KN_set_int_param(m->kc, param_id, op.second),
-            "Error when setting option '" + op.first + "'.");
-          continue;
-        case KN_PARAMTYPE_FLOAT:
-          casadi_assert(!KN_set_double_param(m->kc, param_id, op.second),
-            "Error when setting option '" + op.first + "'.");
-          continue;
-        case KN_PARAMTYPE_STRING:
-          {
-            std::string str = op.second.to_string();
-            casadi_assert(!KN_set_char_param(m->kc, param_id, str.c_str()),
-              "Error when setting option '" + op.first + "'.");
-          }
-          continue;
-        default:
-          casadi_error("Error when setting option '" + op.first + "'.");
-      }
-    }
+  //  // reformulate (scale, add slacks) if necessary
+  //  std::unique_ptr<Model> model = ModelFactory::reformulate(ampl_model, first_iterate, options);
+   std::unique_ptr<Model> model = ModelFactory::reformulate(&m->model, first_iterate, uno_options);
 
-    // "Correct" upper and lower bounds
-    casadi_copy(d_nlp->lbz, nx_, m->wlbx);
-    casadi_copy(d_nlp->ubz, nx_, m->wubx);
-    casadi_copy(d_nlp->lbz+nx_, ng_, m->wlbg);
-    casadi_copy(d_nlp->ubz+nx_, ng_, m->wubg);
-    for (casadi_int i=0; i<nx_; ++i) if (isinf(m->wlbx[i])) m->wlbx[i] = -KN_INFINITY;
-    for (casadi_int i=0; i<nx_; ++i) if (isinf(m->wubx[i])) m->wubx[i] =  KN_INFINITY;
-    for (casadi_int i=0; i<ng_; ++i) if (isinf(m->wlbg[i])) m->wlbg[i] = -KN_INFINITY;
-    for (casadi_int i=0; i<ng_; ++i) if (isinf(m->wubg[i])) m->wubg[i] =  KN_INFINITY;
+  //  // enforce linear constraints at initial point
+  //  if (options.get_bool("enforce_linear_constraints")) {
+  //     Preprocessing::enforce_linear_constraints(options, *model, first_iterate.primals, first_iterate.multipliers);
+  //  }
+   if (uno_options.get_bool("enforce_linear_constraints")) {
+      Preprocessing::enforce_linear_constraints(uno_options, *model, first_iterate.primals, first_iterate.multipliers);
+   }
 
-    std::vector<int> xindex(nx_);
-    std::vector<int> gindex(ng_);
-    iota(begin(xindex), end(xindex), 0);
-    iota(begin(gindex), end(gindex), 0);
+  //  // create the constraint relaxation strategy
+  //  auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(*model, options);
+   auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(*model, uno_options);
 
-    status = KN_add_vars(m->kc, nx_, get_ptr(xindex));
-    casadi_assert(status==0, "KN_add_vars failed");
-    status = KN_set_obj_goal(m->kc, KN_OBJGOAL_MINIMIZE);
-    casadi_assert(status==0, "KN_set_obj_goal failed");
-    status = KN_set_var_lobnds_all(m->kc, m->wlbx);
-    casadi_assert(status==0, "KN_set_var_lobnds failed");
-    status = KN_set_var_upbnds_all(m->kc, m->wubx);
-    casadi_assert(status==0, "KN_set_var_upbnds failed");
-    status = KN_add_cons(m->kc, ng_, get_ptr(gindex));
-    casadi_assert(status==0, "KN_add_cons failed");
-    status = KN_set_con_lobnds_all(m->kc, m->wlbg);
-    casadi_assert(status==0, "KN_set_con_lobnds failed");
-    status = KN_set_con_upbnds_all(m->kc, m->wubg);
-    casadi_assert(status==0, "KN_set_con_upbnds failed");
-    status = KN_set_var_primal_init_values_all(m->kc, d_nlp->z);
-    casadi_assert(status==0, "KN_set_var_primal_init_values failed");
-    if (mi_) {
-        // Types of variables
-        std::vector<int> vtype;
-        vtype.reserve(nx_);
-        for (auto&& e : discrete_) {
-            vtype.push_back(e ? KN_VARTYPE_INTEGER : KN_VARTYPE_CONTINUOUS);
-        }
-        status = KN_set_var_types_all(m->kc, get_ptr(vtype));
-        casadi_assert(status==0, "KN_set_var_types failed");
-    }
+  //  // create the globalization mechanism
+  //  auto mechanism = GlobalizationMechanismFactory::create(*constraint_relaxation_strategy, options);
+   auto mechanism = GlobalizationMechanismFactory::create(*constraint_relaxation_strategy, uno_options);
 
-    // Complementarity constraints
-    status = KN_set_compcons(m->kc, comp_i1_.size(),
-      get_ptr(comp_type_), get_ptr(comp_i1_), get_ptr(comp_i2_));
-    casadi_assert(status==0, "KN_set_compcons failed");
+  //  // instantiate the combination of ingredients and solve the problem
+  //  Uno uno = Uno(*mechanism, options);
+  //  Result result = uno.solve(*model, first_iterate, options);
+   Uno uno = Uno(*mechanism, uno_options);
+   Result result = uno.solve(*model, first_iterate, uno_options);
 
-    // Register callback functions
-    status = KN_add_eval_callback(m->kc, true, ng_, get_ptr(gindex), &callback, &m->cb);
-    casadi_assert(status==0, "KN_add_eval_callback failed");
+  //  // print the optimization summary
+  //  std::string combination = options.get_string("mechanism") + " " + options.get_string("constraint-relaxation") + " " + options.get_string("strategy")
+  //        + " " + options.get_string("subproblem");
+  //  std::cout << "\nUno (" << combination << ")\n";
+  //  std::cout << Timer::get_current_date();
+  //  std::cout << "────────────────────────────────────────\n";
+  //  const bool print_solution = options.get_bool("print_solution");
+  //  result.print(print_solution);
+  //  std::cout << "memory_allocation_amount = " << memory_allocation_amount << '\n';
 
-    status = KN_set_cb_grad(m->kc, m->cb, nx_, get_ptr(xindex),
-                            Jcol.size(), get_ptr(Jrow), get_ptr(Jcol), &callback);
-    casadi_assert(status==0, "KN_set_cb_grad failed");
-
-    if (nnzH>0) {
-      status = KN_set_cb_hess(m->kc, m->cb, nnzH, get_ptr(Hrow), get_ptr(Hcol), &callback);
-      casadi_assert(status==0, "KN_set_cb_hess failed");
-    }
-
-    status = KN_set_cb_user_params(m->kc, m->cb, static_cast<void*>(m));
-    casadi_assert(status==0, "KN_set_cb_user_params failed");
-
-    // NumThreads to 1 to prevent segmentation fault
-    status = KN_set_int_param(m->kc, KN_PARAM_NUMTHREADS, 1);
-    casadi_assert(status==0, "KN_set_cb_user_params failed");
-
-    // Lagrange multipliers
-    std::vector<double> lambda(nx_+ng_);
-
-    // objective solution
-    double objSol;
-
-    // Solve NLP
-    status = KN_solve(m->kc);
-    int statusKnitro = staic_cast<int>(status);
-
-    m->return_status = return_codes(status);
-    m->success = status==KN_RC_OPTIMAL_OR_SATISFACTORY ||
-                 status==KN_RC_NEAR_OPT;
-    if (status==KN_RC_ITER_LIMIT_FEAS  ||
-        status==KN_RC_TIME_LIMIT_FEAS  ||
-        status==KN_RC_FEVAL_LIMIT_FEAS ||
-        status==KN_RC_ITER_LIMIT_INFEAS  ||
-        status==KN_RC_TIME_LIMIT_INFEAS  ||
-        status==KN_RC_FEVAL_LIMIT_INFEAS)
-      m->unified_return_status = SOLVER_RET_LIMITED;
-
-    // Output optimal cost
-    casadi_int error;
-    error = KN_get_solution(m->kc, &statusKnitro, &objSol, d_nlp->z, get_ptr(lambda));
-    casadi_assert(error == 0, "KN_get_solution failed");
-    // Output dual solution
-    casadi_copy(get_ptr(lambda), ng_, d_nlp->lam + nx_);
-    casadi_copy(get_ptr(lambda)+ng_, nx_, d_nlp->lam);
-
-    d_nlp->objective = objSol;
-
-    // Calculate constraints
-    if (ng_>0) {
-      m->arg[0] = d_nlp->z;
-      m->arg[1] = d_nlp->p;
-      m->res[0] = nullptr;
-      m->res[1] = d_nlp->z + nx_;
-      calc_function(m, "nlp_fg");
-    }
-
-    // Free memory (move to destructor!)
-    status = KN_free(&m->kc);
-    casadi_assert(status == 0, "KN_free failed");
-    m->kc = nullptr;
     return 0;
-  }
-
-  int UnoInterface::callback(KN_context_ptr kc,
-                   CB_context_ptr             cb,
-                   KN_eval_request_ptr const  evalRequest,
-                   KN_eval_result_ptr  const  evalResult,
-                   void             *  const  userParams) {
-    try {
-      int thread_id = evalRequest->threadID;
-      // Get a pointer to the calling object
-      auto m = static_cast<UnoMemory*>(userParams);
-      // Get thread local memory
-      auto ml = m->thread_local_mem.at(thread_id);
-      auto d_nlp = &m->d_nlp;
-      const double *x;
-      // Direct to the correct function
-      switch (evalRequest->type) {
-      case KN_RC_EVALFC:
-      double *obj;
-      double *c;
-      x = evalRequest->x;
-      obj = evalResult->obj;
-      c = evalResult->c;
-      ml->arg[0] = x;
-      ml->arg[1] = d_nlp->p;
-      ml->res[0] = obj;
-      ml->res[1] = c;
-      if (m->self.calc_function(m, "nlp_fg", nullptr, thread_id)) return KN_RC_EVAL_ERR;
-      break;
-      case KN_RC_EVALGA:
-      double *objGrad;
-      double *jac;
-      x = evalRequest->x;
-      objGrad = evalResult->objGrad;
-      jac = evalResult->jac;
-      ml->arg[0] = x;
-      ml->arg[1] = d_nlp->p;
-      ml->res[0] = objGrad;
-      ml->res[1] = jac;
-      if (m->self.calc_function(m, "nlp_gf_jg", nullptr, thread_id)) return KN_RC_EVAL_ERR;
-      break;
-      case KN_RC_EVALH_NO_F:
-      case KN_RC_EVALH:
-      const double *lambda;
-      double sigma;
-      double *hess;
-      x = evalRequest->x;
-      hess = evalResult->hess;
-      lambda = evalRequest->lambda;
-      sigma = *(evalRequest->sigma);
-      ml->arg[0] = x;
-      ml->arg[1] = d_nlp->p;
-      ml->arg[2] = &sigma;
-      ml->arg[3] = lambda;
-      ml->res[0] = hess;
-      if (m->self.calc_function(m, "nlp_hess_l", nullptr, thread_id)) {
-        casadi_error("calc_hess_l failed");
-      }
-      break;
-      default:
-        casadi_error("UnoInterface::callback: unknown method");
-      }
-
-      return 0;
-    } catch(KeyboardInterruptException& ex) {
-      return KN_RC_USER_TERMINATION;
-    } catch(std::exception& ex) {
-      uerr() << "UnoInterface::callback caught exception: "
-                               << ex.what() << std::endl;
-      return -1;
-    }
-
-  }
-
-  const char* UnoInterface::return_codes(int flag) {
-    switch (flag) {
-    case KN_RC_OPTIMAL_OR_SATISFACTORY: return "KN_RC_OPTIMAL_OR_SATISFACTORY";
-    case KN_RC_NEAR_OPT: return "KN_RC_NEAR_OPT";
-    case KN_RC_FEAS_XTOL: return "KN_RC_FEAS_XTOL";
-    case KN_RC_FEAS_NO_IMPROVE: return "KN_RC_FEAS_NO_IMPROVE";
-    case KN_RC_FEAS_FTOL: return "KN_RC_FEAS_FTOL";
-    case KN_RC_INFEASIBLE: return "KN_RC_INFEASIBLE";
-    case KN_RC_INFEAS_XTOL: return "KN_RC_INFEAS_XTOL";
-    case KN_RC_INFEAS_NO_IMPROVE: return "KN_RC_INFEAS_NO_IMPROVE";
-    case KN_RC_INFEAS_MULTISTART: return "KN_RC_INFEAS_MULTISTART";
-    case KN_RC_INFEAS_CON_BOUNDS: return "KN_RC_INFEAS_CON_BOUNDS";
-    case KN_RC_INFEAS_VAR_BOUNDS: return "KN_RC_INFEAS_VAR_BOUNDS";
-    case KN_RC_UNBOUNDED: return "KN_RC_UNBOUNDED";
-    case KN_RC_ITER_LIMIT_FEAS: return "KN_RC_ITER_LIMIT_FEAS";
-    case KN_RC_TIME_LIMIT_FEAS: return "KN_RC_TIME_LIMIT_FEAS";
-    case KN_RC_FEVAL_LIMIT_FEAS: return "KN_RC_FEVAL_LIMIT_FEAS";
-    case KN_RC_MIP_EXH_FEAS: return "KN_RC_MIP_EXH_FEAS";
-    case KN_RC_MIP_TERM_FEAS: return "KN_RC_MIP_TERM_FEAS";
-    case KN_RC_MIP_SOLVE_LIMIT_FEAS: return "KN_RC_MIP_SOLVE_LIMIT_FEAS";
-    case KN_RC_MIP_NODE_LIMIT_FEAS: return "KN_RC_MIP_NODE_LIMIT_FEAS";
-    case KN_RC_ITER_LIMIT_INFEAS: return "KN_RC_ITER_LIMIT_INFEAS";
-    case KN_RC_TIME_LIMIT_INFEAS: return "KN_RC_TIME_LIMIT_INFEAS";
-    case KN_RC_FEVAL_LIMIT_INFEAS: return "KN_RC_FEVAL_LIMIT_INFEAS";
-    case KN_RC_MIP_EXH_INFEAS: return "KN_RC_MIP_EXH_INFEAS";
-    case KN_RC_MIP_SOLVE_LIMIT_INFEAS: return "KN_RC_MIP_SOLVE_LIMIT_INFEAS";
-    case KN_RC_MIP_NODE_LIMIT_INFEAS: return "KN_RC_MIP_NODE_LIMIT_INFEAS";
-    case KN_RC_CALLBACK_ERR: return "KN_RC_CALLBACK_ERR";
-    case KN_RC_LP_SOLVER_ERR: return "KN_RC_LP_SOLVER_ERR";
-    case KN_RC_EVAL_ERR: return "KN_RC_EVAL_ERR";
-    case KN_RC_OUT_OF_MEMORY: return "KN_RC_OUT_OF_MEMORY";
-    case KN_RC_USER_TERMINATION: return "KN_RC_USER_TERMINATION";
-    case KN_RC_OPEN_FILE_ERR: return "KN_RC_OPEN_FILE_ERR";
-    case KN_RC_BAD_N_OR_F: return "KN_RC_BAD_N_OR_F";
-    case KN_RC_BAD_CONSTRAINT: return "KN_RC_BAD_CONSTRAINT";
-    case KN_RC_BAD_JACOBIAN: return "KN_RC_BAD_JACOBIAN";
-    case KN_RC_BAD_HESSIAN: return "KN_RC_BAD_HESSIAN";
-    case KN_RC_BAD_CON_INDEX: return "KN_RC_BAD_CON_INDEX";
-    case KN_RC_BAD_JAC_INDEX: return "KN_RC_BAD_JAC_INDEX";
-    case KN_RC_BAD_HESS_INDEX: return "KN_RC_BAD_HESS_INDEX";
-    case KN_RC_BAD_CON_BOUNDS: return "KN_RC_BAD_CON_BOUNDS";
-    case KN_RC_BAD_VAR_BOUNDS: return "KN_RC_BAD_VAR_BOUNDS";
-    case KN_RC_ILLEGAL_CALL: return "KN_RC_ILLEGAL_CALL";
-    case KN_RC_BAD_KCPTR: return "KN_RC_BAD_KCPTR";
-    case KN_RC_NULL_POINTER: return "KN_RC_NULL_POINTER";
-    case KN_RC_BAD_INIT_VALUE: return "KN_RC_BAD_INIT_VALUE";
-    case KN_RC_BAD_PARAMINPUT: return "KN_RC_BAD_PARAMINPUT";
-    case KN_RC_LINEAR_SOLVER_ERR: return "KN_RC_LINEAR_SOLVER_ERR";
-    case KN_RC_DERIV_CHECK_FAILED: return "KN_RC_DERIV_CHECK_FAILED";
-    case KN_RC_DERIV_CHECK_TERMINATE: return "KN_RC_DERIV_CHECK_TERMINATE";
-    case KN_RC_INTERNAL_ERROR: return "KN_RC_INTERNAL_ERROR";
-    }
-    return nullptr;
   }
 
   Dict UnoInterface::get_stats(void* mem) const {
     Dict stats = Nlpsol::get_stats(mem);
-    auto m = static_cast<UnoMemory*>(mem);
-    stats["return_status"] = m->return_status;
+    // auto m = static_cast<UnoMemory*>(mem);
+
 
     return stats;
   }
 
-  UnoInterface::UnoInterface(DeserializingStream& s) : Nlpsol(s) {
-    s.version("UnoInterface", 1);
-    s.unpack("UnoInterface::contype", contype_);
-    s.unpack("UnoInterface::comp_type", comp_type_);
-    s.unpack("UnoInterface::comp_i1", comp_i1_);
-    s.unpack("UnoInterface::comp_i2", comp_i2_);
-    s.unpack("UnoInterface::opts", opts_);
-    s.unpack("UnoInterface::jacg_sp", jacg_sp_);
-    s.unpack("UnoInterface::hesslag_sp", hesslag_sp_);
-  }
-
-  void UnoInterface::serialize_body(SerializingStream &s) const {
-    Nlpsol::serialize_body(s);
-    s.version("UnoInterface", 1);
-    s.pack("UnoInterface::contype", contype_);
-    s.pack("UnoInterface::comp_type", comp_type_);
-    s.pack("UnoInterface::comp_i1", comp_i1_);
-    s.pack("UnoInterface::comp_i2", comp_i2_);
-    s.pack("UnoInterface::opts", opts_);
-    s.pack("UnoInterface::jacg_sp", jacg_sp_);
-    s.pack("UnoInterface::hesslag_sp", hesslag_sp_);
-  }
-
-  UnoMemory::UnoMemory(const UnoInterface& self) : self(self) {
-    this->kc = nullptr;
-  }
-
-  UnoMemory::~UnoMemory() {
-    // Currently no persistent memory since KNITRO requires knowledge of nature of bounds
-    // if (this->kc) {
-    //   KTR_free(&this->kc);
-    //}
-  }
+  
 
 } // namespace casadi
