@@ -1166,7 +1166,9 @@ if(WITH_UNO)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include/uno")
 
+    find_library(bqpd NAMES bqpd HINTS /home/david/bqpd)
     add_library(uno STATIC IMPORTED)
+    target_link_libraries(uno INTERFACE ${bqpd})
     add_dependencies(uno uno-external)
     set_target_properties(uno PROPERTIES
       IMPORTED_LOCATION "${CMAKE_BINARY_DIR}/external_projects/lib/${CMAKE_SHARED_LIBRARY_PREFIX}uno${CMAKE_STATIC_LIBRARY_SUFFIX}"

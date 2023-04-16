@@ -107,6 +107,7 @@ private:
    UnoMemory* mem_;
 
    mutable std::vector<double> casadi_tmp_gradient{};
+   mutable std::vector<double> casadi_tmp_multipliers{};
    mutable std::vector<double> casadi_tmp_constraint_jacobian{};
    mutable std::vector<double> casadi_tmp_hessian{};
 

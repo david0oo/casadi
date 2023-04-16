@@ -267,4 +267,4 @@ if(INSTALL_INTERNAL_HEADERS)
   )
 endif()
 
-target_compile_features(casadi INTERFACE cxx_std_17)
+target_compile_features(casadi PUBLIC cxx_std_17)
