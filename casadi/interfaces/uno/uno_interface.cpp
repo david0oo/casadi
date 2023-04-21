@@ -221,7 +221,7 @@ namespace casadi {
         constraint_jacobian[j].clear();
         for (size_t k= mem_->self.jacg_sp_.colind()[j]; k< mem_->self.jacg_sp_.colind()[j + 1];++k) {
           const size_t i = mem_->self.jacg_sp_.row()[k];
-          const double entry = casadi_tmp_hessian[k];
+          const double entry = casadi_tmp_constraint_jacobian[k];
           constraint_jacobian[j].insert(i, entry);
         }
       }
