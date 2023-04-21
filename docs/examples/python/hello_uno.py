@@ -1,19 +1,20 @@
+"""
+Test Problem for UNO solver
+- Globalization is needed.
+- Linear constraints as constraints, solver does not know about
+ linearity
+"""
 import casadi as cs
 
-x = cs.MX.sym("x")
-y = cs.MX.sym("y")
+x = cs.SX.sym("x")
+f = cs.log(cs.exp(x) + cs.exp(-x))
+g = x
+nlp = {'x':x, 'f':f, 'g':g}
 
-f = x**2 + y**2
-
-g = x**2 + y**2
-
-lbg = 0
-ubg = 0
-
-nlp = {"x":cs.vertcat(x,y), "f":f, "g":g}
+lbg = -2
+ubg = 2
+x0 = 2
 
 solver = cs.nlpsol('s','uno', nlp)
-
-
-res = solver(lbg=lbg, ubg=ubg)
-
+res = solver(x0  = x0,ubg = ubg,lbg = lbg)
+print(res['x'])
