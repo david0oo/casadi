@@ -579,6 +579,23 @@ namespace casadi {
 
 
    // Write the solution to Casadi .....
+   // Negate rc to match CasADi's definition
+    // casadi_scal(nx_ + ng_, -1., get_ptr(m->rc));
+
+  // Get primal solution
+  casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);
+
+  // Get optimal cost
+  d_nlp->objective = result.solution.evaluations.objective;
+
+  // Get dual solution
+  // Get dual solution (simple bounds)
+  for (casadi_int i=0; i<m->model->number_variables; ++i) {
+    d_nlp->lam[i] = result.solution.multipliers.upper_bounds[i]-result.solution.multipliers.upper_bounds[i];
+  }
+  casadi_copy(get_ptr(result.solution.multipliers.constraints)+nx_, ng_, d_nlp->lam + nx_);
+  // Copy optimal constraint values to output
+  casadi_copy(get_ptr(result.solution.evaluations.constraints), ng_, d_nlp->z + nx_);
 
 
    // print the optimization summary
