@@ -327,12 +327,14 @@ namespace casadi {
   void CasadiModel::generate_variables() {
     // Calculate variable bounds
     for (size_t i=0; i< this->number_variables; ++i) {
-      double lb = (mem_->d_nlp.lbx != nullptr) ? *mem_->d_nlp.lbx+i : -INF<double>;
-      double ub = (mem_->d_nlp.ubx != nullptr) ? *mem_->d_nlp.ubx+i : INF<double>;
+      double lb = (mem_->d_nlp.lbx != nullptr) ? *(mem_->d_nlp.lbx+i) : -INF<double>;
+      double ub = (mem_->d_nlp.ubx != nullptr) ? *(mem_->d_nlp.ubx+i) : INF<double>;
       if (lb == ub) {
           WARNING << "Variable x" << i << " has identical bounds\n";
       }
       this->variables_bounds[i] = {lb, ub};
+      std::cout << "lbx at" << i << ":" << lb  << std::endl;
+      std::cout << "ubx at" << i << ":" << ub << std::endl;
     }
 
     Model::determine_bounds_types(this->variables_bounds, this->variable_status);
@@ -357,14 +359,14 @@ namespace casadi {
   void CasadiModel::generate_constraints() {
   //  auto d_nlp = &this->mem_->d_nlp;
    for (size_t i=0; i< this->number_constraints; ++i) {
-      double lb = (mem_->d_nlp.lbg != nullptr) ? *this->mem_->d_nlp.lbg+i : -INF<double>;
-      double ub = (mem_->d_nlp.ubg != nullptr) ? *this->mem_->d_nlp.ubg+i : INF<double>;
+      double lb = (mem_->d_nlp.lbg != nullptr) ? *(this->mem_->d_nlp.lbg+i) : -INF<double>;
+      double ub = (mem_->d_nlp.ubg != nullptr) ? *(this->mem_->d_nlp.ubg+i) : INF<double>;
       // std::cout << "Memory location " << d_nlp->x0 << std::endl;
       // double lb = d_nlp->x0[0];//+this->number_variables+i;
       // double ub = *mem_->d_nlp.ubg;//+this->number_variables+i;
       this->constraint_bounds[i] = {lb, ub};
-      std::cout << "lb: " << lb  << std::endl;
-      std::cout << "ub: " << ub << std::endl;
+      std::cout << "lbg at" << i << ":" << lb  << std::endl;
+      std::cout << "ubg at" << i << ":" << ub << std::endl;
 
    }
    Model::determine_bounds_types(this->constraint_bounds, this->constraint_status);
