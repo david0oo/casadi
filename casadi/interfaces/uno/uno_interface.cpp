@@ -134,8 +134,8 @@ namespace casadi {
     this->set_function_types(file_name);
 
     // compute number of nonzeros
-    this->objective_gradient_maximum_number_nonzeros = static_cast<size_t>(0);//static_cast<size_t>(this->asl->i.nzo_);
-    this->jacobian_maximum_number_nonzeros = static_cast<size_t>(mem_->self.jacg_sp_.nnz());
+    this->number_objective_gradient_nonzeros = static_cast<size_t>(0);//static_cast<size_t>(this->asl->i.nzo_);
+    this->number_jacobian_nonzeros = static_cast<size_t>(mem_->self.jacg_sp_.nnz());
     this->set_number_hessian_nonzeros();
 
   }
@@ -147,8 +147,8 @@ namespace casadi {
    const int upper_triangular = 1;
   //  this->hessian_maximum_number_nonzeros = static_cast<size_t>((*(this->asl)->p.Sphset)(this->asl, nullptr, objective_number, 1, 1,
   //        upper_triangular));
-   this->hessian_maximum_number_nonzeros = static_cast<size_t>(this->mem_->self.hesslag_sp_.nnz());
-   this->casadi_tmp_hessian.reserve(this->hessian_maximum_number_nonzeros);
+   this->number_hessian_nonzeros = static_cast<size_t>(this->mem_->self.hesslag_sp_.nnz());
+   this->casadi_tmp_hessian.reserve(this->number_hessian_nonzeros);
 
    // use Lagrangian scale: in AMPL, the Lagrangian is f + lambda.g, while Uno uses f - lambda.g
    int nerror{};
@@ -200,7 +200,7 @@ namespace casadi {
       // Write everything into gradient...
       gradient.clear();
       size_t n_columns = this->number_variables;
-      std::cout << "We evaluate the constraint gradient." << std::endl;
+      // std::cout << "We evaluate the constraint gradient." << std::endl;
 
 
       for (size_t l=0; l<n_columns; ++l) {
@@ -228,8 +228,8 @@ namespace casadi {
       casadi_assert(mem_->self.calc_function(mem_, "nlp_jac_g")==0, "Failed to evaluate constraint jacobian.");
 
       // Write everything into RectangularMatrix...
-      std::cout << "Number of variables: " << this->number_variables << std::endl;
-      std::cout << "Number of vectors in constraint jacobian: " << constraint_jacobian.size() << std::endl;
+      // std::cout << "Number of variables: " << this->number_variables << std::endl;
+      // std::cout << "Number of vectors in constraint jacobian: " << constraint_jacobian.size() << std::endl;
       size_t n_rows = constraint_jacobian.size();
       size_t n_columns = this->number_variables;
       //clear the matrix
@@ -301,14 +301,14 @@ namespace casadi {
     return this->constraint_status[j];
   }
 
-  size_t CasadiModel::get_maximum_number_objective_gradient_nonzeros() const {
-    return this->objective_gradient_maximum_number_nonzeros;;
+  size_t CasadiModel::get_number_objective_gradient_nonzeros() const {
+    return this->number_objective_gradient_nonzeros;;
   }
-  size_t CasadiModel::get_maximum_number_jacobian_nonzeros() const {
-    return this->jacobian_maximum_number_nonzeros;
+  size_t CasadiModel::get_number_jacobian_nonzeros() const {
+    return this->number_jacobian_nonzeros;
   }
-  size_t CasadiModel::get_maximum_number_hessian_nonzeros() const {
-    return this->hessian_maximum_number_nonzeros;
+  size_t CasadiModel::get_number_hessian_nonzeros() const {
+    return this->number_hessian_nonzeros;
   }
 
   void CasadiModel::get_initial_primal_point(std::vector<double>& x) const {
@@ -354,6 +354,10 @@ namespace casadi {
           }
       }
     }
+  }
+
+  const std::vector<size_t>& CasadiModel::get_linear_constraints() const {
+      return this->linear_constraints;
   }
 
   void CasadiModel::generate_constraints() {
@@ -532,6 +536,19 @@ namespace casadi {
       return uno_options;
   }
 
+  Statistics create_statistics(const Model& model, const ::Options& options) {
+   Statistics statistics(options);
+   statistics.add_column("iters", Statistics::int_width, options.get_int("statistics_major_column_order"));
+   statistics.add_column("step norm", Statistics::double_width, options.get_int("statistics_step_norm_column_order"));
+   statistics.add_column("objective", Statistics::double_width, options.get_int("statistics_objective_column_order"));
+   if (model.is_constrained()) {
+      statistics.add_column("primal infeas.", Statistics::double_width, options.get_int("statistics_primal_infeasibility_column_order"));
+   }
+   statistics.add_column("complementarity", Statistics::double_width, options.get_int("statistics_complementarity_column_order"));
+   statistics.add_column("stationarity", Statistics::double_width, options.get_int("statistics_stationarity_column_order"));
+   return statistics;
+}
+
   int UnoInterface::solve(void* mem) const {
     auto m = static_cast<UnoMemory*>(mem);
     auto d_nlp = &m->d_nlp;
@@ -547,61 +564,34 @@ namespace casadi {
     set_logger(uno_options.get_string("logger"));
 
    // initialize initial primal and dual points
-  //  Iterate first_iterate(ampl_model.number_variables, ampl_model.number_constraints);
-
    Iterate first_iterate(m->model->number_variables, m->model->number_constraints);
-
-  //  ampl_model.get_initial_primal_point(first_iterate.primals);
-
    m->model->get_initial_primal_point(first_iterate.primals);
-  std::cout << "Memory location " << d_nlp->x0 << std::endl;
-
-
-  //  ampl_model.get_initial_dual_point(first_iterate.multipliers.constraints);
-
    m->model->get_initial_dual_point(first_iterate.multipliers.constraints);
-
-  //  ampl_model.project_primals_onto_bounds(first_iterate.primals);
-
    m->model->project_primals_onto_bounds(first_iterate.primals);
 
   // //  // reformulate (scale, add slacks) if necessary
   // //  std::unique_ptr<Model> model = ModelFactory::reformulate(ampl_model, first_iterate, options);
-  // //  std::unique_ptr<Model> model = ModelFactory::reformulate(m->model, first_iterate, uno_options);
-
     std::unique_ptr<Model> model = std::make_unique<ScaledModel>(*m->model, first_iterate, uno_options);
 
-  // //  // enforce linear constraints at initial point
-  // //  if (options.get_bool("enforce_linear_constraints")) {
-  // //     Preprocessing::enforce_linear_constraints(options, *model, first_iterate.primals, first_iterate.multipliers);
-  // //  }
+    // create the statistics
+   Statistics statistics = create_statistics(*model, uno_options);
 
    if (uno_options.get_bool("enforce_linear_constraints")) {
-      // Preprocessing::enforce_linear_constraints(uno_options, *model, first_iterate.primals, first_iterate.multipliers);
       Preprocessing::enforce_linear_constraints(uno_options, *model, first_iterate.primals, first_iterate.multipliers);
    }
 
-  // //  // create the constraint relaxation strategy
-  // //  auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(*model, options);
+   // create the constraint relaxation strategy
+   auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(statistics, *model, uno_options);
 
-   auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(*model, uno_options);
+   // create the globalization mechanism
+   auto mechanism = GlobalizationMechanismFactory::create(statistics, *constraint_relaxation_strategy, uno_options);
 
-  // //  // create the globalization mechanism
-  // //  auto mechanism = GlobalizationMechanismFactory::create(*constraint_relaxation_strategy, options);
-
-   auto mechanism = GlobalizationMechanismFactory::create(*constraint_relaxation_strategy, uno_options);
-
-  //  // instantiate the combination of ingredients and solve the problem
-  //  Uno uno = Uno(*mechanism, options);
-  //  Result result = uno.solve(*model, first_iterate, options);
-
+   // instantiate the combination of ingredients and solve the problem
    Uno uno = Uno(*mechanism, uno_options);
-   Result result = uno.solve(*model, first_iterate, uno_options);
-
+   Result result = uno.solve(statistics, *model, first_iterate);
 
    // Write the solution to Casadi .....
    // Negate rc to match CasADi's definition
-    // casadi_scal(nx_ + ng_, -1., get_ptr(m->rc));
 
   // Get primal solution
   casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);
@@ -634,7 +624,6 @@ namespace casadi {
   Dict UnoInterface::get_stats(void* mem) const {
     Dict stats = Nlpsol::get_stats(mem);
     // auto m = static_cast<UnoMemory*>(mem);
-
 
     return stats;
   }
