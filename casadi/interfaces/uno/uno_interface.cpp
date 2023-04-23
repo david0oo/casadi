@@ -197,13 +197,26 @@ namespace casadi {
       mem_->res[0] = get_ptr(casadi_tmp_constraint_jacobian);
       casadi_assert(mem_->self.calc_function(mem_, "nlp_jac_g")==0, "Failed to evaluate constraint jacobian.");
 
-      // Write everything into RectangularMatrix...
+      // Write everything into gradient...
       gradient.clear();
-      for (size_t k= mem_->self.jacg_sp_.colind()[j]; k< mem_->self.jacg_sp_.colind()[j + 1];++k) {
-        const size_t i = mem_->self.jacg_sp_.row()[k];
-        const double entry = casadi_tmp_hessian[k];
-        gradient.insert(i, entry);
+      size_t n_columns = this->number_variables;
+      std::cout << "We evaluate the constraint gradient." << std::endl;
+
+
+      for (size_t l=0; l<n_columns; ++l) {
+        for (size_t k= mem_->self.jacg_sp_.colind()[l]; k< mem_->self.jacg_sp_.colind()[l + 1];++k) {
+          const size_t i = mem_->self.jacg_sp_.row()[k];
+          const double entry = casadi_tmp_constraint_jacobian[k];
+          if (i == j)
+            gradient.insert(l, entry);
+        }
       }
+
+      // for (size_t k= mem_->self.jacg_sp_.colind()[j]; k< mem_->self.jacg_sp_.colind()[j + 1];++k) {
+      //   const size_t i = mem_->self.jacg_sp_.row()[k];
+      //   const double entry = casadi_tmp_hessian[k];
+      //   gradient.insert(i, entry);
+      // }
   }
 
   void CasadiModel::evaluate_constraint_jacobian(const std::vector<double>& x, RectangularMatrix<double>& constraint_jacobian) const {
@@ -215,14 +228,20 @@ namespace casadi {
       casadi_assert(mem_->self.calc_function(mem_, "nlp_jac_g")==0, "Failed to evaluate constraint jacobian.");
 
       // Write everything into RectangularMatrix...
-      size_t n_columns = constraint_jacobian.size();
-      for (size_t j=0; j<n_columns; ++j) {
+      std::cout << "Number of variables: " << this->number_variables << std::endl;
+      std::cout << "Number of vectors in constraint jacobian: " << constraint_jacobian.size() << std::endl;
+      size_t n_rows = constraint_jacobian.size();
+      size_t n_columns = this->number_variables;
+      //clear the matrix
+      for (size_t i=0; i<n_rows; ++i){
+        constraint_jacobian[i].clear();
+      }
 
-        constraint_jacobian[j].clear();
+      for (size_t j=0; j<n_columns; ++j) {
         for (size_t k= mem_->self.jacg_sp_.colind()[j]; k< mem_->self.jacg_sp_.colind()[j + 1];++k) {
           const size_t i = mem_->self.jacg_sp_.row()[k];
           const double entry = casadi_tmp_constraint_jacobian[k];
-          constraint_jacobian[j].insert(i, entry);
+          constraint_jacobian[i].insert(j, entry);
         }
       }
   }
