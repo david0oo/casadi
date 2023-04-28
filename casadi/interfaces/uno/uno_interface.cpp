@@ -571,7 +571,8 @@ namespace casadi {
 
   // //  // reformulate (scale, add slacks) if necessary
   // //  std::unique_ptr<Model> model = ModelFactory::reformulate(ampl_model, first_iterate, options);
-    std::unique_ptr<Model> model = std::make_unique<ScaledModel>(*m->model, first_iterate, uno_options);
+  std::unique_ptr<Model> unscaled_model = std::make_unique<CasadiModel>(*m->model);
+  std::unique_ptr<Model> model = std::make_unique<ScaledModel>(std::move(unscaled_model), first_iterate, uno_options);
 
     // create the statistics
    Statistics statistics = create_statistics(*model, uno_options);
