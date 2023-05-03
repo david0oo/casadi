@@ -1648,7 +1648,8 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         //     casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
         //   }
 
-        g << "if (" << use_sqp_ << ") {\n";
+        if (use_sqp_){
+        // g << "if (" << use_sqp_ << ") {\n";
         g.comment("Just exact Hessian implemented, GN would be possible!");
         g << "m_arg[0] = d_nlp.z;\n";
         g << "m_arg[1] = m_p;\n";
@@ -1658,7 +1659,8 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         std::string nlp_hess_l = g(get_function("nlp_hess_l"), "m_arg", "m_res", "m_iw", "m_w");
         // g << "if (" + nlp_hess_l + ") return 1;\n";
         g << "if (" + nlp_hess_l + ") return 70;\n";
-        g << "}\n";
+        // g << "}\n";
+        }
 
         // }
         // test if initialization is feasible
@@ -1744,18 +1746,19 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         //     casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
         //   }
         // }
-        g << "if (" << use_sqp_ << ") {\n";
+        if (use_sqp_){
+        // g << "if (" << use_sqp_ << ") {\n";
         g.comment("Just exact Hessian implemented, GN would be possible!");
         g << "m_arg[0] = d_nlp.z;\n";
         g << "m_arg[1] = m_p;\n";
         g << "m_arg[2] = &one;\n";
         g << "m_arg[3] = d_nlp.lam+" + str(nx_) + ";\n";
         g << "m_res[0] = d.Bk;\n";
-        nlp_hess_l = g(get_function("nlp_hess_l"), "m_arg", "m_res", "m_iw", "m_w");
+        std::string nlp_hess_l = g(get_function("nlp_hess_l"), "m_arg", "m_res", "m_iw", "m_w");
         // g << "if (" + nlp_hess_l + ") return 1;\n";
         g << "if (" + nlp_hess_l + ") return 70;\n";
-        g << "}\n";
-
+        // g << "}\n";
+        }
       // }
       g << "}\n";
 
