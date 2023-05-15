@@ -4,16 +4,15 @@ tolerance 1e-8
 
 # maximum outer iterations
 max_iterations 2000
-#max_iterations 2
+
+# CPU time limit (in seconds)
+time_limit inf
 
 # print optimal solution (yes|no)
-print_solution yes
+print_solution no
 
-# Uno terminates when the step is small
-terminate_with_small_step yes
-
-# small step threshold
-small_step_threshold 1e-11
+# threshold on objective to declare unbounded NLP
+unbounded_objective_threshold -1e20
 
 # enforce linear constraints at the initial point
 enforce_linear_constraints no
@@ -24,7 +23,7 @@ statistics_print_header_every_iterations 15
 statistics_major_column_order 1
 statistics_minor_column_order 2
 statistics_restoration_phase_column_order 4
-statistics_penalty_parameter_column_order 4
+statistics_penalty_parameter_column_order 5
 statistics_regularization_column_order 6
 statistics_barrier_parameter_column_order 8
 statistics_SOC_column_order 9
@@ -38,21 +37,21 @@ statistics_complementarity_column_order 104
 statistics_stationarity_column_order 105
 
 ##### ingredients #####
-# default subproblem (QP|LP|barrier)
+# default constraint relaxation strategy (feasibility_restoration|l1_relaxation)
+constraint_relaxation_strategy feasibility_restoration
+
+# default subproblem (QP|LP|primal_dual_interior_point)
 subproblem QP
 
-# default globalization strategy (l1-penalty|leyffer-filter-strategy|waechter-filter-strategy)
-strategy leyffer-filter-strategy
-
-# default constraint relaxation strategy (feasibility-restoration|l1-relaxation)
-constraint-relaxation feasibility-restoration
+# default globalization strategy (l1_merit|leyffer_filter_strategy|waechter_filter_strategy)
+globalization_strategy leyffer_filter_strategy
 
 # default globalization mechanism (TR|LS)
-mechanism TR
+globalization_mechanism TR
 
 ##### main options #####
 # logging level (INFO|DEBUG)
-logger DEBUG
+logger INFO
 
 # Hessian model (exact|BFGS)
 hessian_model exact
@@ -73,9 +72,6 @@ scale_residuals yes
 
 # enforce the linear constraints at the initial point (yes|no)
 enforce_linear_constraints no
-
-# enable the use of second-order correction (yes|no)
-use_second_order_correction no
 
 # norm of the progress measures (L1|L2|INF)
 progress_norm L1
@@ -150,11 +146,14 @@ TR_increase_factor 2
 # TR radius decrease factor
 TR_decrease_factor 2
 
+# TR aggressive radius decrease factor
+TR_aggressive_decrease_factor 4
+
 # tolerance in TR constraint activity
 TR_activity_tolerance 1e-6
 
 # minimum TR radius
-TR_min_radius 1e-12
+TR_min_radius 1e-7
 
 # threshold below which the TR radius is reset
 TR_radius_reset_threshold 1e-4
@@ -198,5 +197,5 @@ barrier_damping_factor 1e-5
 least_square_multiplier_max_norm 1e3
 
 ##### BQPD options #####
-BQPD_print_subproblem yes
+BQPD_print_subproblem no
 BQPD_kmax 500

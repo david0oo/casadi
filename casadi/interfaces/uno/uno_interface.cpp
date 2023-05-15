@@ -39,7 +39,7 @@
 #include "tools/Logger.hpp"
 
 #include "Uno.hpp"
-Level Logger::logger_level = INFO;
+Level Logger::level = INFO;
 
 // Casadi Includes
 #include "uno_interface.hpp"
@@ -105,7 +105,7 @@ namespace casadi {
   ---------------------------------------------------------------*/
 
   CasadiModel::CasadiModel(const std::string& file_name, const UnoInterface& uno_interface, UnoMemory* mem) :
-    Model(file_name, uno_interface.nx_, uno_interface.ng_, NONLINEAR),
+    Model(file_name, uno_interface.nx_, uno_interface.ng_),
     mem_(mem),
     // allocate vectors
     casadi_tmp_gradient(this->number_variables),
@@ -131,7 +131,7 @@ namespace casadi {
     this->inequality_constraints.reserve(this->number_constraints);
     this->linear_constraints.reserve(this->number_constraints);
     this->generate_constraints();
-    this->set_function_types(file_name);
+    // this->set_function_types(file_name);
 
     // compute number of nonzeros
     this->number_objective_gradient_nonzeros = static_cast<size_t>(0);//static_cast<size_t>(this->asl->i.nzo_);
@@ -377,63 +377,63 @@ namespace casadi {
    this->determine_constraints();
   }
 
-  void CasadiModel::set_function_types(std::string file_name) {
-    // // allocate a temporary ASL to read Hessian sparsity pattern
-    // ASL* asl_fg = ASL_alloc(ASL_read_fg);
-    // // char* stub = getstops(file_name, option_info);
-    // //if (file_name == nullptr) {
-    // //	usage_ASL(option_info, 1);
-    // //}
+  // void CasadiModel::set_function_types(std::string file_name) {
+  //   // // allocate a temporary ASL to read Hessian sparsity pattern
+  //   // ASL* asl_fg = ASL_alloc(ASL_read_fg);
+  //   // // char* stub = getstops(file_name, option_info);
+  //   // //if (file_name == nullptr) {
+  //   // //	usage_ASL(option_info, 1);
+  //   // //}
 
-    // FILE* nl = jac0dim_ASL(asl_fg, file_name.data(), static_cast<int>(file_name.size()));
-    // // specific read function
-    // // qp_read_ASL(asl_fg, nl, ASL_findgroups);
+  //   // FILE* nl = jac0dim_ASL(asl_fg, file_name.data(), static_cast<int>(file_name.size()));
+  //   // // specific read function
+  //   // // qp_read_ASL(asl_fg, nl, ASL_findgroups);
 
-    // // // constraints
-    // // if (asl_fg->i.n_con_ != static_cast<int>(this->number_constraints)) {
-    // //     throw std::length_error("AMPLModel.set_function_types: inconsistent number of constraints");
-    // // }
+  //   // // // constraints
+  //   // // if (asl_fg->i.n_con_ != static_cast<int>(this->number_constraints)) {
+  //   // //     throw std::length_error("AMPLModel.set_function_types: inconsistent number of constraints");
+  //   // // }
 
-    this->constraint_type.reserve(this->number_constraints);
-    this->problem_type = NONLINEAR;
+  //   this->constraint_type.reserve(this->number_constraints);
+  //   this->problem_type = NONLINEAR;
 
-    // // determine the type of each constraint and objective function
-    // // determine if the problem is nonlinear (non-quadratic objective or nonlinear constraints)
-    // this->problem_type = LINEAR;
-    // int* rowq;
-    // int* colqp;
-    // double* delsqp;
-    // for (size_t j: Range(this->number_constraints)) {
-    //     int qp = nqpcheck_ASL(asl_fg, static_cast<int>(-(j + 1)), &rowq, &colqp, &delsqp);
+  //   // // determine the type of each constraint and objective function
+  //   // // determine if the problem is nonlinear (non-quadratic objective or nonlinear constraints)
+  //   // this->problem_type = LINEAR;
+  //   // int* rowq;
+  //   // int* colqp;
+  //   // double* delsqp;
+  //   // for (size_t j: Range(this->number_constraints)) {
+  //   //     int qp = nqpcheck_ASL(asl_fg, static_cast<int>(-(j + 1)), &rowq, &colqp, &delsqp);
 
-    //     if (0 < qp) {
-    //       this->constraint_type[j] = QUADRATIC;
-    //       this->problem_type = NONLINEAR;
-    //     }
-    //     else if (qp == 0) {
-    //       this->constraint_type[j] = LINEAR;
-    //       this->linear_constraints.push_back(j);
-    //     }
-    //     else {
-    //       this->constraint_type[j] = NONLINEAR;
-    //       this->problem_type = NONLINEAR;
-    //     }
-    // }
-    // // objective function
-    // int qp = nqpcheck_ASL(asl_fg, 0, &rowq, &colqp, &delsqp);
-    // if (0 < qp) {
-    //     if (this->problem_type == LINEAR) {
-    //       this->problem_type = QUADRATIC;
-    //     }
-    // }
-    // else if (qp != 0) {
-    //     this->problem_type = NONLINEAR;
-    // }
-    // qp_opify_ASL(asl_fg);
+  //   //     if (0 < qp) {
+  //   //       this->constraint_type[j] = QUADRATIC;
+  //   //       this->problem_type = NONLINEAR;
+  //   //     }
+  //   //     else if (qp == 0) {
+  //   //       this->constraint_type[j] = LINEAR;
+  //   //       this->linear_constraints.push_back(j);
+  //   //     }
+  //   //     else {
+  //   //       this->constraint_type[j] = NONLINEAR;
+  //   //       this->problem_type = NONLINEAR;
+  //   //     }
+  //   // }
+  //   // // objective function
+  //   // int qp = nqpcheck_ASL(asl_fg, 0, &rowq, &colqp, &delsqp);
+  //   // if (0 < qp) {
+  //   //     if (this->problem_type == LINEAR) {
+  //   //       this->problem_type = QUADRATIC;
+  //   //     }
+  //   // }
+  //   // else if (qp != 0) {
+  //   //     this->problem_type = NONLINEAR;
+  //   // }
+  //   // qp_opify_ASL(asl_fg);
 
-    // // deallocate memory
-    // ASL_free(&asl_fg);
-  }
+  //   // // deallocate memory
+  //   // ASL_free(&asl_fg);
+  // }
 
   /*-------------------------------------------
   UnoInterface function definitions
@@ -557,28 +557,25 @@ namespace casadi {
 
     // CasadiModel casadi_model = &m->model;
 
-    //Define options file..so far a bit cheated
-
     // ::Options uno_options = rewrite_options(opts_);
     ::Options uno_options = get_default_options("/home/david/casadi_fork/casadi/casadi/interfaces/uno/uno.options");
-    set_logger(uno_options.get_string("logger"));
+    ::Logger::set_logger(uno_options.get_string("logger"));
 
    // initialize initial primal and dual points
-   Iterate first_iterate(m->model->number_variables, m->model->number_constraints);
-   m->model->get_initial_primal_point(first_iterate.primals);
-   m->model->get_initial_dual_point(first_iterate.multipliers.constraints);
-   m->model->project_primals_onto_bounds(first_iterate.primals);
+   Iterate initial_iterate(m->model->number_variables, m->model->number_constraints);
+   m->model->get_initial_primal_point(initial_iterate.primals);
+   m->model->get_initial_dual_point(initial_iterate.multipliers.constraints);
+   m->model->project_primals_onto_bounds(initial_iterate.primals);
 
   // //  // reformulate (scale, add slacks) if necessary
-  // //  std::unique_ptr<Model> model = ModelFactory::reformulate(ampl_model, first_iterate, options);
   std::unique_ptr<Model> unscaled_model = std::make_unique<CasadiModel>(*m->model);
-  std::unique_ptr<Model> model = std::make_unique<ScaledModel>(std::move(unscaled_model), first_iterate, uno_options);
+  std::unique_ptr<Model> model = std::make_unique<ScaledModel>(std::move(unscaled_model), initial_iterate, uno_options);
 
     // create the statistics
    Statistics statistics = create_statistics(*model, uno_options);
 
    if (uno_options.get_bool("enforce_linear_constraints")) {
-      Preprocessing::enforce_linear_constraints(uno_options, *model, first_iterate.primals, first_iterate.multipliers);
+      Preprocessing::enforce_linear_constraints(uno_options, *model, initial_iterate.primals, initial_iterate.multipliers);
    }
 
    // create the constraint relaxation strategy
@@ -589,36 +586,42 @@ namespace casadi {
 
    // instantiate the combination of ingredients and solve the problem
    Uno uno = Uno(*mechanism, uno_options);
-   Result result = uno.solve(statistics, *model, first_iterate);
 
-   // Write the solution to Casadi .....
-   // Negate rc to match CasADi's definition
+   try {
+      Result result = uno.solve(statistics, *model, initial_iterate);
 
-  // Get primal solution
-  casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);
+      // Write the solution to Casadi .....
+      // Negate rc to match CasADi's definition
 
-  // Get optimal cost
-  d_nlp->objective = result.solution.evaluations.objective;
+      // Get primal solution
+      casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);
 
-  // Get dual solution
-  // Get dual solution (simple bounds)
-  for (casadi_int i=0; i<m->model->number_variables; ++i) {
-    d_nlp->lam[i] = result.solution.multipliers.upper_bounds[i]-result.solution.multipliers.upper_bounds[i];
-  }
-  casadi_copy(get_ptr(result.solution.multipliers.constraints)+nx_, ng_, d_nlp->lam + nx_);
-  // Copy optimal constraint values to output
-  casadi_copy(get_ptr(result.solution.evaluations.constraints), ng_, d_nlp->z + nx_);
+      std::cout << "We solved the problem" << std::endl;
+      // Get optimal cost
+      d_nlp->objective = result.solution.evaluations.objective;
 
+      // Get dual solution
+      // Get dual solution (simple bounds)
+      for (casadi_int i=0; i<m->model->number_variables; ++i) {
+        d_nlp->lam[i] = result.solution.multipliers.upper_bounds[i]-result.solution.multipliers.upper_bounds[i];
+      }
+      casadi_copy(get_ptr(result.solution.multipliers.constraints)+nx_, ng_, d_nlp->lam + nx_);
+      // Copy optimal constraint values to output
+      casadi_copy(get_ptr(result.solution.evaluations.constraints), ng_, d_nlp->z + nx_);
 
-   // print the optimization summary
-   std::string combination = uno_options.get_string("mechanism") + " " + uno_options.get_string("constraint-relaxation") + " " + uno_options.get_string("strategy")
-         + " " + uno_options.get_string("subproblem");
-   std::cout << "\nUno (" << combination << ")\n";
-   std::cout << Timer::get_current_date();
-   std::cout << "────────────────────────────────────────\n";
-   const bool print_solution = uno_options.get_bool("print_solution");
-   result.print(print_solution);
-
+      // print the optimization summary
+      std::string combination = uno_options.get_string("globalization_mechanism") + " " + uno_options.get_string("constraint_relaxation_strategy") + " " +
+                                uno_options.get_string("globalization_strategy") + " " + uno_options.get_string("subproblem");
+      std::cout << "\nUno (" << combination << ")\n";
+      std::cout << Timer::get_current_date();
+      std::cout << "────────────────────────────────────────\n";
+      const bool print_solution = uno_options.get_bool("print_solution");
+      result.print(print_solution);
+   }
+   catch (const std::exception& e) {
+      std::cout << "Uno terminated with an error\n";
+   }
+   
     return 0;
   }
 

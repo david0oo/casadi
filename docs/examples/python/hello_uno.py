@@ -17,4 +17,5 @@ x0 = 2
 
 solver = cs.nlpsol('s','uno', nlp)
 res = solver(x0  = x0,ubg = ubg,lbg = lbg)
-print(res['x'])
+print("Optimal x: ", res['x'])
+print("Optimal f: ", res['f'])
