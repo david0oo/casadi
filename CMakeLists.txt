@@ -1161,7 +1161,7 @@ if(WITH_UNO)
         UPDATE_COMMAND ""
         BUILD_ALWAYS ON
         CMAKE_COMMAND "${EXTERNAL_CMAKE_COMMAND}"
-        CMAKE_ARGS -DCMAKE_LIBRARY_PATH=/home/david/bqpd -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> "-DCMAKE_CXX_FLAGS=-fPIC -lbqpd -L/home/david/bqpd" -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_Fortran_FLAGS="-fPIC")
+        CMAKE_ARGS -DCMAKE_LIBRARY_PATH=/home/david/bqpd -DWITH_CASADI=ON -DCMAKE_MODULE_PATH=${CMAKE_PREFIX} -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> "-DCMAKE_CXX_FLAGS=-fPIC -lbqpd -L/home/david/bqpd" -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_Fortran_FLAGS="-fPIC")
     message("test ${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include/uno")
