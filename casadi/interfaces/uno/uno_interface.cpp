@@ -93,7 +93,7 @@ namespace casadi {
   };
 
   UnoMemory::UnoMemory(const UnoInterface& uno_interface) : self(uno_interface), NlpsolMemory() {
-    
+    this->return_status = "Unset";
   }
 
   UnoMemory::~UnoMemory() {
@@ -549,6 +549,48 @@ namespace casadi {
    return statistics;
 }
 
+inline const char* return_status_string(Result result) {
+
+   if (result.solution.status == TerminationStatus::FEASIBLE_KKT_POINT) {
+      return "Converged with feasible KKT point";
+   }
+   else if (result.solution.status == TerminationStatus::FEASIBLE_FJ_POINT) {
+      return "Converged with feasible FJ point";
+   }
+   else if (result.solution.status == TerminationStatus::INFEASIBLE_STATIONARY_POINT) {
+      return "Converged with infeasible stationary point";
+   }
+   else if (result.solution.status == TerminationStatus::FEASIBLE_SMALL_STEP) {
+      return "Terminated with feasible small step";
+   }
+   else if (result.solution.status == TerminationStatus::INFEASIBLE_SMALL_STEP) {
+      return "Terminated with infeasible small step";
+   }
+   else if (result.solution.status == TerminationStatus::UNBOUNDED) {
+      return "Terminated with unbounded problem";
+   }
+   else {
+      return "Failed with suboptimal point";
+   }
+  }
+
+  inline const bool return_status_success(Result result) {
+
+   if (result.solution.status == TerminationStatus::FEASIBLE_KKT_POINT) {
+      return true;
+   }
+   else if (result.solution.status == TerminationStatus::FEASIBLE_FJ_POINT) {
+      return true;
+   }
+   else if (result.solution.status == TerminationStatus::INFEASIBLE_STATIONARY_POINT) {
+      return true;
+   }
+   else {
+      return false;
+   }
+  }
+
+
   int UnoInterface::solve(void* mem) const {
     auto m = static_cast<UnoMemory*>(mem);
     auto d_nlp = &m->d_nlp;
@@ -592,6 +634,8 @@ namespace casadi {
 
       // Write the solution to Casadi .....
       // Negate rc to match CasADi's definition
+      m->return_status = return_status_string(result);
+      m->success = return_status_success(result);
 
       // Get primal solution
       casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);

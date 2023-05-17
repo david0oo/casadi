@@ -57,7 +57,7 @@ namespace casadi {
     const UnoInterface& self;
 
     CasadiModel* model;
-
+    const char* return_status;
     /// Constructor
     UnoMemory(const UnoInterface& uno_interface);
 
