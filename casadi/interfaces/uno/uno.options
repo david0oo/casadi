@@ -3,7 +3,7 @@
 tolerance 1e-8
 
 # maximum outer iterations
-max_iterations 2000
+max_iterations 30
 
 # CPU time limit (in seconds)
 time_limit inf
@@ -51,7 +51,7 @@ globalization_mechanism TR
 
 ##### main options #####
 # logging level (INFO|DEBUG)
-logger INFO
+logger DEBUG2
 
 # Hessian model (exact|BFGS)
 hessian_model exact
@@ -210,5 +210,5 @@ barrier_damping_factor 1e-5
 least_square_multiplier_max_norm 1e3
 
 ##### BQPD options #####
-BQPD_print_subproblem no
+BQPD_print_subproblem yes
 BQPD_kmax 500

@@ -255,22 +255,30 @@ namespace casadi {
     mem_->arg[0] = get_ptr(x);
     mem_->arg[1] = mem_->d_nlp.p;
     mem_->arg[2] = &objective_multiplier;
+    // Multipliers need to be 
     casadi_copy(get_ptr(multipliers), this->number_constraints, get_ptr(casadi_tmp_multipliers));
     casadi_scal(this->number_constraints, -1., get_ptr(casadi_tmp_multipliers));
     mem_->arg[3] = get_ptr(casadi_tmp_multipliers);
     mem_->res[0] = get_ptr(casadi_tmp_hessian);
     casadi_assert(mem_->self.calc_function(mem_, "nlp_hess_l")==0, "Failed to evaluate Lagrangian hessian.");
 
+
+
+
+
     hessian.reset();
     // Write the hessian into Symmetric matrix ....
     for (size_t j=0; j<this->number_variables;++j) {
       for (size_t k=mem_->self.hesslag_sp_.colind()[j]; k< mem_->self.hesslag_sp_.colind()[j + 1];++k) {
          const size_t i = mem_->self.hesslag_sp_.row()[k];
-         const double entry = casadi_tmp_hessian[k];
-         hessian.insert(entry, i, j);
+         if (i <= j){
+          const double entry = casadi_tmp_hessian[k];
+          hessian.insert(entry, i, j);
+         }
       }
       hessian.finalize_column(j);
    }
+   std::cout << "Hessian matrix: " << hessian << std::endl;
   }
 
   double CasadiModel::get_variable_lower_bound(size_t i) const {
