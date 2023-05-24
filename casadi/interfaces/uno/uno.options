@@ -51,7 +51,7 @@ globalization_mechanism TR
 
 ##### main options #####
 # logging level (INFO|DEBUG)
-logger DEBUG2
+logger INFO
 
 # Hessian model (exact|BFGS)
 hessian_model exact
@@ -162,7 +162,7 @@ TR_min_radius 1e-7
 TR_radius_reset_threshold 1e-4
 
 # force QP convexification when in a trust-region setting
-convexify_QP false
+convexify_QP no
 
 ##### constraint relaxation options #####
 ##### l1 relaxation options #####
@@ -210,5 +210,5 @@ barrier_damping_factor 1e-5
 least_square_multiplier_max_norm 1e3
 
 ##### BQPD options #####
-BQPD_print_subproblem yes
+BQPD_print_subproblem no
 BQPD_kmax 500

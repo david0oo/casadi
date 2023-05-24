@@ -278,7 +278,6 @@ namespace casadi {
       }
       hessian.finalize_column(j);
    }
-   std::cout << "Hessian matrix: " << hessian << std::endl;
   }
 
   double CasadiModel::get_variable_lower_bound(size_t i) const {
@@ -322,7 +321,7 @@ namespace casadi {
   void CasadiModel::get_initial_primal_point(std::vector<double>& x) const {
     assert(x.size() >= this->number_variables);
     std::copy(mem_->d_nlp.x0, mem_->d_nlp.x0 + this->number_variables, begin(x));
-    std::cout << "Vector is " << x << std::endl;
+    // std::cout << "Vector is " << x << std::endl;
   }
   void CasadiModel::get_initial_dual_point(std::vector<double>& multipliers) const {
     assert(multipliers.size() >= this->number_constraints);
@@ -341,8 +340,8 @@ namespace casadi {
           WARNING << "Variable x" << i << " has identical bounds\n";
       }
       this->variables_bounds[i] = {lb, ub};
-      std::cout << "lbx at" << i << ":" << lb  << std::endl;
-      std::cout << "ubx at" << i << ":" << ub << std::endl;
+      // std::cout << "lbx at" << i << ":" << lb  << std::endl;
+      // std::cout << "ubx at" << i << ":" << ub << std::endl;
     }
 
     Model::determine_bounds_types(this->variables_bounds, this->variable_status);
@@ -377,8 +376,8 @@ namespace casadi {
       // double lb = d_nlp->x0[0];//+this->number_variables+i;
       // double ub = *mem_->d_nlp.ubg;//+this->number_variables+i;
       this->constraint_bounds[i] = {lb, ub};
-      std::cout << "lbg at" << i << ":" << lb  << std::endl;
-      std::cout << "ubg at" << i << ":" << ub << std::endl;
+      // std::cout << "lbg at" << i << ":" << lb  << std::endl;
+      // std::cout << "ubg at" << i << ":" << ub << std::endl;
 
    }
    Model::determine_bounds_types(this->constraint_bounds, this->constraint_status);
@@ -522,7 +521,7 @@ namespace casadi {
    // memory should be freed somewhere else
     m->model = new CasadiModel("casadi_model", *this, m);
 
-    std::cout << "Set Work acces" << std::endl;
+    // std::cout << "Set Work acces" << std::endl;
 
   }
 
@@ -532,16 +531,34 @@ namespace casadi {
     return s.size();
   }
 
-  ::Options rewrite_options(const Dict& options){
-    	// This function writes the casadi options into UNO options
-      ::Options uno_options;
-      Dict::const_iterator  it;
-      for (it = options.begin(); it != options.end(); it++)
-      {
-          // static_assert(std::is_same<decltype(it->second), std::string>::value, "type must be 'std::string'"); 
-          uno_options[it->first] = uno_options[it->second];
+  void insert_casadi_options(::Options& uno_options, Dict opts) {
+    // build the (name, value) map
+    Dict casadi_options = Options::sanitize(opts);
+    std::cout << "Options casadi" << casadi_options << std::endl;
+
+    // Define the preset and erase it from the options file
+    std::string preset;
+    auto it = casadi_options.find("preset");
+    if (it!=casadi_options.end()) {
+      preset = it->second.to_string();
+      casadi_options.erase(it);
+    } else {
+      preset = "filtersqp";
+    }
+    find_preset(preset, uno_options);
+
+    // Pass all the options to ipopt
+    for (auto&& op : casadi_options) {
+
+      // There might be options with a resto prefix.
+      std::string option_name = op.first;
+      if (startswith(option_name, "resto.")) {
+        option_name = option_name.substr(6);
       }
-      return uno_options;
+      const std::string name = op.first;
+      const std::string value = std::string(op.second);
+      uno_options[name] = value;
+    }
   }
 
   Statistics create_statistics(const Model& model, const ::Options& options) {
@@ -555,135 +572,132 @@ namespace casadi {
    statistics.add_column("complementarity", Statistics::double_width, options.get_int("statistics_complementarity_column_order"));
    statistics.add_column("stationarity", Statistics::double_width, options.get_int("statistics_stationarity_column_order"));
    return statistics;
-}
+  }
 
 inline const char* return_status_string(Result result) {
 
-   if (result.solution.status == TerminationStatus::FEASIBLE_KKT_POINT) {
-      return "Converged with feasible KKT point";
-   }
-   else if (result.solution.status == TerminationStatus::FEASIBLE_FJ_POINT) {
-      return "Converged with feasible FJ point";
-   }
-   else if (result.solution.status == TerminationStatus::INFEASIBLE_STATIONARY_POINT) {
-      return "Converged with infeasible stationary point";
-   }
-   else if (result.solution.status == TerminationStatus::FEASIBLE_SMALL_STEP) {
-      return "Terminated with feasible small step";
-   }
-   else if (result.solution.status == TerminationStatus::INFEASIBLE_SMALL_STEP) {
-      return "Terminated with infeasible small step";
-   }
-   else if (result.solution.status == TerminationStatus::UNBOUNDED) {
-      return "Terminated with unbounded problem";
-   }
-   else {
-      return "Failed with suboptimal point";
-   }
+    if (result.solution.status == TerminationStatus::FEASIBLE_KKT_POINT) {
+        return "Converged with feasible KKT point";
+    }
+    else if (result.solution.status == TerminationStatus::FEASIBLE_FJ_POINT) {
+        return "Converged with feasible FJ point";
+    }
+    else if (result.solution.status == TerminationStatus::INFEASIBLE_STATIONARY_POINT) {
+        return "Converged with infeasible stationary point";
+    }
+    else if (result.solution.status == TerminationStatus::FEASIBLE_SMALL_STEP) {
+        return "Terminated with feasible small step";
+    }
+    else if (result.solution.status == TerminationStatus::INFEASIBLE_SMALL_STEP) {
+        return "Terminated with infeasible small step";
+    }
+    else if (result.solution.status == TerminationStatus::UNBOUNDED) {
+        return "Terminated with unbounded problem";
+    }
+    else {
+        return "Failed with suboptimal point";
+    }
   }
 
   inline const bool return_status_success(Result result) {
 
-   if (result.solution.status == TerminationStatus::FEASIBLE_KKT_POINT) {
-      return true;
-   }
-   else if (result.solution.status == TerminationStatus::FEASIBLE_FJ_POINT) {
-      return true;
-   }
-   else if (result.solution.status == TerminationStatus::INFEASIBLE_STATIONARY_POINT) {
-      return true;
-   }
-   else {
-      return false;
-   }
+    if (result.solution.status == TerminationStatus::FEASIBLE_KKT_POINT) {
+        return true;
+    }
+    else if (result.solution.status == TerminationStatus::FEASIBLE_FJ_POINT) {
+        return true;
+    }
+    else if (result.solution.status == TerminationStatus::INFEASIBLE_STATIONARY_POINT) {
+        return true;
+    }
+    else {
+        return false;
+    }
   }
-
 
   int UnoInterface::solve(void* mem) const {
     auto m = static_cast<UnoMemory*>(mem);
     auto d_nlp = &m->d_nlp;
-    std::cout << "Memory location " << d_nlp->x0 << std::endl;
-
 
     // CasadiModel casadi_model = &m->model;
 
     // ::Options uno_options = rewrite_options(opts_);
     ::Options uno_options = get_default_options("/home/david/casadi_fork/casadi/casadi/interfaces/uno/uno.options");
+    // define preset and insert options given through casadi 
+    insert_casadi_options(uno_options, opts_);
+    uno_options.print();
     ::Logger::set_logger(uno_options.get_string("logger"));
 
-   // initialize initial primal and dual points
-   Iterate initial_iterate(m->model->number_variables, m->model->number_constraints);
-   m->model->get_initial_primal_point(initial_iterate.primals);
-   m->model->get_initial_dual_point(initial_iterate.multipliers.constraints);
-   m->model->project_primals_onto_bounds(initial_iterate.primals);
+    // initialize initial primal and dual points
+    Iterate initial_iterate(m->model->number_variables, m->model->number_constraints);
+    m->model->get_initial_primal_point(initial_iterate.primals);
+    m->model->get_initial_dual_point(initial_iterate.multipliers.constraints);
+    m->model->project_primals_onto_bounds(initial_iterate.primals);
 
-  // //  // reformulate (scale, add slacks) if necessary
-  std::unique_ptr<Model> unscaled_model = std::make_unique<CasadiModel>(*m->model);
-  std::unique_ptr<Model> model = std::make_unique<ScaledModel>(std::move(unscaled_model), initial_iterate, uno_options);
+    // reformulate (scale, add slacks) if necessary
+    std::unique_ptr<Model> unscaled_model = std::make_unique<CasadiModel>(*m->model);
+    std::unique_ptr<Model> model = std::make_unique<ScaledModel>(std::move(unscaled_model), initial_iterate, uno_options);
 
-    // create the statistics
-   Statistics statistics = create_statistics(*model, uno_options);
+      // create the statistics
+    Statistics statistics = create_statistics(*model, uno_options);
 
-   if (uno_options.get_bool("enforce_linear_constraints")) {
-      Preprocessing::enforce_linear_constraints(uno_options, *model, initial_iterate.primals, initial_iterate.multipliers);
-   }
+    if (uno_options.get_bool("enforce_linear_constraints")) {
+        Preprocessing::enforce_linear_constraints(uno_options, *model, initial_iterate.primals, initial_iterate.multipliers);
+    }
 
-   // create the constraint relaxation strategy
-   auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(statistics, *model, uno_options);
+    // create the constraint relaxation strategy
+    auto constraint_relaxation_strategy = ConstraintRelaxationStrategyFactory::create(statistics, *model, uno_options);
 
-   // create the globalization mechanism
-   auto mechanism = GlobalizationMechanismFactory::create(statistics, *constraint_relaxation_strategy, uno_options);
+    // create the globalization mechanism
+    auto mechanism = GlobalizationMechanismFactory::create(statistics, *constraint_relaxation_strategy, uno_options);
 
-   // instantiate the combination of ingredients and solve the problem
-   Uno uno = Uno(*mechanism, uno_options);
+    // instantiate the combination of ingredients and solve the problem
+    Uno uno = Uno(*mechanism, uno_options);
 
-   try {
-      Result result = uno.solve(statistics, *model, initial_iterate);
+    try {
+        Result result = uno.solve(statistics, *model, initial_iterate);
 
-      // Write the solution to Casadi .....
-      // Negate rc to match CasADi's definition
-      m->return_status = return_status_string(result);
-      m->success = return_status_success(result);
+        // Write the solution to Casadi .....
+        // Negate rc to match CasADi's definition
+        m->return_status = return_status_string(result);
+        m->success = return_status_success(result);
 
-      // Get primal solution
-      casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);
+        // Get primal solution
+        casadi_copy(get_ptr(result.solution.primals), nx_, d_nlp->z);
 
-      std::cout << "We solved the problem" << std::endl;
-      // Get optimal cost
-      d_nlp->objective = result.solution.evaluations.objective;
+        // std::cout << "We solved the problem" << std::endl;
+        // Get optimal cost
+        d_nlp->objective = result.solution.evaluations.objective;
 
-      // Get dual solution
-      // Get dual solution (simple bounds)
-      for (casadi_int i=0; i<m->model->number_variables; ++i) {
-        d_nlp->lam[i] = result.solution.multipliers.upper_bounds[i]-result.solution.multipliers.upper_bounds[i];
-      }
-      casadi_copy(get_ptr(result.solution.multipliers.constraints)+nx_, ng_, d_nlp->lam + nx_);
-      // Copy optimal constraint values to output
-      casadi_copy(get_ptr(result.solution.evaluations.constraints), ng_, d_nlp->z + nx_);
+        // Get dual solution
+        // Get dual solution (simple bounds)
+        for (casadi_int i=0; i<m->model->number_variables; ++i) {
+          d_nlp->lam[i] = result.solution.multipliers.upper_bounds[i]-result.solution.multipliers.upper_bounds[i];
+        }
+        casadi_copy(get_ptr(result.solution.multipliers.constraints)+nx_, ng_, d_nlp->lam + nx_);
+        // Copy optimal constraint values to output
+        casadi_copy(get_ptr(result.solution.evaluations.constraints), ng_, d_nlp->z + nx_);
 
-      // print the optimization summary
-      std::string combination = uno_options.get_string("globalization_mechanism") + " " + uno_options.get_string("constraint_relaxation_strategy") + " " +
-                                uno_options.get_string("globalization_strategy") + " " + uno_options.get_string("subproblem");
-      std::cout << "\nUno (" << combination << ")\n";
-      std::cout << Timer::get_current_date();
-      std::cout << "────────────────────────────────────────\n";
-      const bool print_solution = uno_options.get_bool("print_solution");
-      result.print(print_solution);
-   }
-   catch (const std::exception& e) {
-      std::cout << "Uno terminated with an error\n";
-   }
-   
-    return 0;
+        // print the optimization summary
+        std::string combination = uno_options.get_string("globalization_mechanism") + " " + uno_options.get_string("constraint_relaxation_strategy") + " " +
+                                  uno_options.get_string("globalization_strategy") + " " + uno_options.get_string("subproblem");
+        std::cout << "\nUno (" << combination << ")\n";
+        std::cout << Timer::get_current_date();
+        std::cout << "────────────────────────────────────────\n";
+        const bool print_solution = uno_options.get_bool("print_solution");
+        result.print(print_solution);
+    }
+    catch (const std::exception& e) {
+        std::cout << "Uno terminated with an error\n";
+    }
+    
+      return 0;
   }
 
   Dict UnoInterface::get_stats(void* mem) const {
     Dict stats = Nlpsol::get_stats(mem);
-    // auto m = static_cast<UnoMemory*>(mem);
-
+    
     return stats;
   }
-
-  
 
 } // namespace casadi
