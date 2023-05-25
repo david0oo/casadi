@@ -1152,8 +1152,10 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
 set(COIN_FLAGS "--enable-debug")
 endif()
 
+
 if(WITH_UNO)
   if(WITH_BUILD_UNO)
+    find_library(bqpd NAMES bqpd HINTS $ENV{BQPD})
     ExternalProject_Add(uno-external
         GIT_REPOSITORY ${BUILD_UNO_GIT_REPO}
         GIT_TAG ${BUILD_UNO_VERSION}
@@ -1161,12 +1163,11 @@ if(WITH_UNO)
         UPDATE_COMMAND ""
         BUILD_ALWAYS ON
         CMAKE_COMMAND "${EXTERNAL_CMAKE_COMMAND}"
-        CMAKE_ARGS -DCMAKE_LIBRARY_PATH=/home/david/bqpd -DWITH_CASADI=ON -DCMAKE_MODULE_PATH=${CMAKE_PREFIX} -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> "-DCMAKE_CXX_FLAGS=-fPIC -lbqpd -L/home/david/bqpd" -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_Fortran_FLAGS="-fPIC")
+        CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX} -DCMAKE_LIBRARY_PATH=$ENV{BQPD} -DWITH_CASADI=ON -DCMAKE_MODULE_PATH=${CMAKE_PREFIX} -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> "-DCMAKE_CXX_FLAGS=-fPIC ${bqpd}" -DCMAKE_C_FLAGS="-fPIC" -DCMAKE_Fortran_FLAGS="-fPIC")
     message("test ${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/external_projects")
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/external_projects/include/uno")
 
-    find_library(bqpd NAMES bqpd HINTS /home/david/bqpd)
     add_library(uno STATIC IMPORTED)
     target_link_libraries(uno INTERFACE ${bqpd})
     add_dependencies(uno uno-external)
