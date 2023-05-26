@@ -5,4 +5,6 @@ casadi_plugin(Nlpsol uno
   uno_interface.cpp
   uno_interface_meta.cpp)
 
-casadi_plugin_link_libraries(Nlpsol uno uno)
+find_library(ma57 NAMES ma57 HINTS /usr/local/lib)
+# target_link_libraries(uno INTERFACE ${ma57})
+casadi_plugin_link_libraries(Nlpsol uno uno ma57)
