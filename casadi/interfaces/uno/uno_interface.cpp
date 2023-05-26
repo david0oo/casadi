@@ -674,7 +674,10 @@ inline const char* return_status_string(Result result) {
         for (casadi_int i=0; i<m->model->number_variables; ++i) {
           d_nlp->lam[i] = result.solution.multipliers.upper_bounds[i]-result.solution.multipliers.upper_bounds[i];
         }
-        casadi_copy(get_ptr(result.solution.multipliers.constraints)+nx_, ng_, d_nlp->lam + nx_);
+        casadi_copy(get_ptr(result.solution.multipliers.constraints), ng_, d_nlp->lam + nx_);
+        std::cout << "Solution multipliers cons" << result.solution.multipliers.constraints.size() << std::endl;
+        std::cout << "Number constraints" << ng_ << std::endl;
+        std::cout << "Number variables" << nx_ << std::endl;
         // Copy optimal constraint values to output
         casadi_copy(get_ptr(result.solution.evaluations.constraints), ng_, d_nlp->z + nx_);
 
