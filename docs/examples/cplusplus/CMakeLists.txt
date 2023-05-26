@@ -17,6 +17,9 @@ target_link_libraries(callback casadi)
 add_executable(propagating_sparsity propagating_sparsity.cpp)
 target_link_libraries(propagating_sparsity casadi)
 
+add_executable(test_uno test_uno.cpp)
+target_link_libraries(test_uno casadi)
+
 # Rosenbrock problem
 if(WITH_IPOPT)
   add_executable(rosenbrock rosenbrock.cpp)

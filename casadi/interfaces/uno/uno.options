@@ -81,7 +81,7 @@ residual_norm INF
 
 ##### solvers #####
 # default QP solver
-QP_solver BQPD
+QP_solver casadi
 
 # default LP solver
 LP_solver BQPD
