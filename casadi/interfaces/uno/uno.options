@@ -3,7 +3,7 @@
 tolerance 1e-8
 
 # maximum outer iterations
-max_iterations 30
+max_iterations 2000
 
 # CPU time limit (in seconds)
 time_limit inf
@@ -79,9 +79,11 @@ progress_norm L1
 # norm of the primal-dual residuals (L1|L2|INF)
 residual_norm INF
 
+residual_scaling_threshold 100.
+
 ##### solvers #####
 # default QP solver
-QP_solver casadi
+QP_solver BQPD
 
 # default LP solver
 LP_solver BQPD
@@ -162,7 +164,7 @@ TR_min_radius 1e-7
 TR_radius_reset_threshold 1e-4
 
 # force QP convexification when in a trust-region setting
-convexify_QP no
+convexify_QP false
 
 ##### constraint relaxation options #####
 ##### l1 relaxation options #####

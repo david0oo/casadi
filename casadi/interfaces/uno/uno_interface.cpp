@@ -381,7 +381,22 @@ namespace casadi {
 
    }
    Model::determine_bounds_types(this->constraint_bounds, this->constraint_status);
-   this->determine_constraints();
+   
+   for (size_t j=0; j<this->number_constraints; ++j) {
+      if (this->get_constraint_bound_type(j) == EQUAL_BOUNDS) {
+         this->equality_constraints.push_back(j);
+      }
+      else {
+         this->inequality_constraints.push_back(j);
+      }
+
+    // AMPL orders the constraints based on the function type: nonlinear first, then linear
+   for (size_t j=0; j<this->number_constraints; ++j) {
+      this->constraint_type[j] = NONLINEAR;
+   }
+   }
+   
+  //  this->determine_constraints();
   }
 
   // void CasadiModel::set_function_types(std::string file_name) {
