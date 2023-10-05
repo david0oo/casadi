@@ -848,13 +848,19 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad) const {
     // DM(std::vector<double>(d->dlam_feas, d->dlam_feas+nx_)).to_file("lam_x.mtx");
     // DM(std::vector<double>(d->dlam_feas+nx_, d->dlam_feas+nx_+ng_)).to_file("lam_g.mtx");
 
+    int ret = 0;
     if (use_sqp_) {
-      solve_QP(m, d->Bk, d->gf_feas, d->lbdz_feas, d->ubdz_feas,
+      ret = solve_QP(m, d->Bk, d->gf_feas, d->lbdz_feas, d->ubdz_feas,
         d->Jk, d->dx_feas, d->dlam_feas, 0);
     } else {
-      solve_LP(m, d->gf_feas, d->lbdz_feas, d->ubdz_feas,
+      ret = solve_LP(m, d->gf_feas, d->lbdz_feas, d->ubdz_feas,
         d->Jk, d->dx_feas, d->dlam_feas, 0);
     }
+
+    if (ret != 0){
+        std::cout << "Subproblem in feasibility iterations is not solved!" << std::endl;
+        return -1;
+      }
 
      // put definition of ret out of loop
 
@@ -1268,6 +1274,10 @@ int Feasiblesqpmethod::solve(void* mem) const {
                  d->dx, d->dlam, 0);
       }
 
+      if (ret != 0){
+        throw std::runtime_error("Subproblem in main loop is not solved!");
+      }
+
       // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
       // Eval quadratic model and check for convergence
       m_k = eval_m_k(mem);
@@ -1394,8 +1404,17 @@ int Feasiblesqpmethod::solve(void* mem) const {
     // Solve the QP
     qpsol_(m->arg, m->res, m->iw, m->w, 0);
 
-    if (verbose_) print("QP solved\n");
-    return 0;
+    if (qpsol_.stats()["success"]){
+      if (verbose_) print("QP solved\n");
+      return 0;
+    } else {
+      if (verbose_) print("Failure in QP!\n");
+      return 1;
+    }
+
+    return -1;
+    // return 0;
+
   }
 
   int Feasiblesqpmethod::solve_QP(FeasiblesqpmethodMemory* m, const double* H, const double* g,
