@@ -183,7 +183,7 @@ namespace casadi {
     // -------- FROM HERE OPTIONS FOR FP-SQP ------------------
 
     // tolerances
-    double optim_tol_, feas_tol_;
+    double optimality_tol_, feasibility_tol_;
 
     // trust-region parameters
     double tr_eta1_, tr_eta2_;
