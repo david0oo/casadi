@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -329,6 +329,12 @@ class CASADI_EXPORT DaeBuilder
   void sanity_check() const;
   ///@}
 
+  /// Clear all variables of a type
+  void clear_all(const std::string& v);
+
+  /// Set all variables of a type
+  void set_all(const std::string& v, const std::vector<std::string>& name);
+
   /** @name Register an existing variable */
   ///@{
   void register_t(const std::string& name);
@@ -343,23 +349,27 @@ class CASADI_EXPORT DaeBuilder
   void register_y(const std::string& name);
   ///@}
 
-  /** @name Specify all variables of a type */
+#ifdef WITH_DEPRECATED_FEATURES
+  /** @name [DEPRECATED] Specify all variables of a type: Call set_all instead */
   ///@{
-  void set_u(const std::vector<std::string>& name);
-  void set_x(const std::vector<std::string>& name);
+  void set_u(const std::vector<std::string>& name) { set_all("u", name);}
+  void set_x(const std::vector<std::string>& name) { set_all("x", name);}
   void set_z(const std::vector<std::string>& name,
     const std::vector<std::string>& alg = std::vector<std::string>());
-  void set_q(const std::vector<std::string>& name);
-  void set_y(const std::vector<std::string>& name);
+  void set_q(const std::vector<std::string>& name) { set_all("q", name);}
+  void set_y(const std::vector<std::string>& name) { set_all("y", name);}
   ///@}
+#endif  // WITH_DEPRECATED_FEATURES
 
   /** @name Manipulation
    *  Reformulate the dynamic optimization problem.
    */
   ///@{
 
-  /// Clear input variable
-  void clear_in(const std::string& v);
+#ifdef WITH_DEPRECATED_FEATURES
+  /// [DEPRECATED] Clear input variable: Replaced by clear_all
+  void clear_in(const std::string& v) { clear_all(v);}
+#endif  // WITH_DEPRECATED_FEATURES
 
   /// Eliminate all dependent variables
   void eliminate_w();
@@ -422,11 +432,14 @@ class CASADI_EXPORT DaeBuilder
   /// Import existing problem from FMI/XML
   void parse_fmi(const std::string& filename) {load_fmi_description(filename); }
 
+  /// Does the FMU provide support for analytic derivatives
+  bool provides_directional_derivative() const;
+
   /// Import problem description from FMI or XML
   void load_fmi_description(const std::string& filename);
 
   /// Export instance into an FMU
-  void export_fmu(const std::string& file_prefix, const Dict& opts=Dict());
+  std::vector<std::string> export_fmu(const Dict& opts=Dict());
 
   /// Add a named linear combination of output expressions
   void add_lc(const std::string& name, const std::vector<std::string>& f_out);
@@ -434,7 +447,7 @@ class CASADI_EXPORT DaeBuilder
   /// Construct a function object, legacy syntax
   Function create(const std::string& fname,
     const std::vector<std::string>& name_in,
-    const std::vector<std::string>& name_out, bool sx = false, bool lifted_calls = false) const;
+    const std::vector<std::string>& name_out, bool sx, bool lifted_calls = false) const;
 
   /** \brief  Construct a function object, names provided
 

@@ -3,7 +3,7 @@
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
  *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -601,6 +601,11 @@ namespace casadi {
     virtual Sparsity get_jac_sparsity(casadi_int oind, casadi_int iind, bool symmetric) const;
     ///@}
 
+    /// Helper function: Get name of forward derivative function
+    static std::string forward_name(const std::string& fcn, casadi_int nfwd) {
+      return "fwd" + str(nfwd) + "_" + fcn;
+    }
+
     ///@{
     /** \brief Return function that calculates forward derivatives
 
@@ -616,6 +621,11 @@ namespace casadi {
                                  const std::vector<std::string>& onames,
                                  const Dict& opts) const;
     ///@}
+
+    /// Helper function: Get name of adjoint derivative function
+    static std::string reverse_name(const std::string& fcn, casadi_int nadj) {
+      return "adj" + str(nadj) + "_" + fcn;
+    }
 
     ///@{
     /** \brief Return function that calculates adjoint derivatives
@@ -744,6 +754,11 @@ namespace casadi {
 
         \identifier{lj} */
     Function wrap_as_needed(const Dict& opts) const;
+
+    /** \brief Get all functions in the cache
+
+        \identifier{26g} */
+    Dict cache() const;
 
     /** \brief Get function in cache
 
@@ -1248,6 +1263,11 @@ namespace casadi {
         \identifier{no} */
     bool has_refcount_;
 
+    /** \brief Values to prepopulate the function cache with
+
+        \identifier{26h} */
+    Dict cache_init_;
+
     /// Function cache
     mutable std::map<std::string, WeakRef> cache_;
 
@@ -1307,7 +1327,7 @@ namespace casadi {
     std::string dump_format_;
 
     // Forward/reverse/Jacobian options
-    Dict forward_options_, reverse_options_, jacobian_options_;
+    Dict forward_options_, reverse_options_, jacobian_options_, der_options_;
 
     // Store a reference to a custom Jacobian
     Function custom_jacobian_;

@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -298,8 +298,7 @@ def SX_from_array(m, check_only=True):
   if isinstance(m, np.ndarray):
     if len(m.shape)>2:
       return False
-    np_object=np.object if hasattr(np,'object') else object
-    if m.dtype!=np_object: return None
+    if m.dtype!=object: return None
     shape = m.shape + (1, 1)
     nrow, ncol = shape[0], shape[1]
     return (nrow,ncol,m.flat)
@@ -340,7 +339,7 @@ def DM_from_csc(m, check_only=True):
   %feature("customdoc:proto:constructor", "$name($in)");
   %feature("customdoc:proto:single_out", "$name($in) -> $out");
   %feature("customdoc:proto:normal", "$name($in) -> ($out)");
-  %feature("customdoc:main", "  $brief\n\n$overview\n$main");
+  %feature("customdoc:main", "  $brief\n\n::\n\n$overview\n$main");
 #endif
 
 %feature("customdoc:arg:normal:style_error", "$type");
@@ -2497,14 +2496,62 @@ arccosh = lambda x: _casadi.acosh(x)
 %rename(_horzcat) casadi_horzcat;
 %rename(_diagcat) casadi_diagcat;
 %pythoncode %{
-def veccat(*args): return _veccat(args)
-def vertcat(*args): return _vertcat(args)
-def horzcat(*args): return _horzcat(args)
-def diagcat(*args): return _diagcat(args)
-def vvcat(args): return _veccat(args)
-def vcat(args): return _vertcat(args)
-def hcat(args): return _horzcat(args)
-def dcat(args): return _diagcat(args)
+def veccat(*args):
+    try:
+        if len(args)==0:
+            return DM(0,1)
+    except:
+        pass
+    return _veccat(args)
+def vertcat(*args):
+    try:
+        if len(args)==0:
+            return DM(0,1)
+    except:
+        pass
+    return _vertcat(args)
+def horzcat(*args):
+    try:
+        if len(args)==0:
+            return DM(1,0)
+    except:
+        pass
+    return _horzcat(args)
+def diagcat(*args):
+    try:
+        if len(args)==0:
+            return DM(0,0)
+    except:
+        pass
+    return _diagcat(args)
+def vvcat(args):
+    try:
+        if len(args)==0:
+            return DM(0,1)
+    except:
+        pass
+    return _veccat(args)
+def vcat(args):
+    try:
+        if len(args)==0:
+            return DM(0,1)
+    except:
+        pass
+    return _vertcat(args)
+def hcat(args):
+    try:
+        if len(args)==0:
+            return DM(1,0)
+    except:
+        pass
+    return _horzcat(args)
+def dcat(args):
+    try:
+        if len(args)==0:
+            return DM(0,0)
+    except:
+        pass
+    return _diagcat(args)
 %}
 
 // Non-fatal errors (returning NotImplemented singleton)
@@ -2547,7 +2594,13 @@ if (!$1) {
 // Workarounds, pending proper fix
 %rename(nonzero) __nonzero__;
 %rename(hash) __hash__;
+
+%rename(rem) casadi_mod;
 #endif // SWIGMATLAB
+
+#ifdef SWIGPYTHON
+%ignore casadi_mod;
+#endif // SWIGPYTHON
 
 #ifdef WITH_PYTHON3
 %rename(__bool__) __nonzero__;
@@ -3039,6 +3092,10 @@ DECL std::vector< M > casadi_symvar(const M& x) {
 
 DECL M casadi_bilin(const M& A, const M& x, const M& y) {
   return bilin(A, x, y);
+}
+
+DECL M casadi_bilin(const M& A, const M& x) {
+  return bilin(A, x);
 }
 
 DECL M casadi_rank1(const M& A, const M& alpha, const M& x, const M& y) {
@@ -3606,6 +3663,12 @@ DECL M casadi_stop_diff(const M& expr, casadi_int order) {
 DECL M casadi_stop_diff(const M& expr, const M& var, casadi_int order) {
   return stop_diff(expr, var, order);
 }
+DECL M casadi_no_hess(const M& expr) {
+  return no_hess(expr);
+}
+DECL M casadi_no_grad(const M& expr) {
+  return no_grad(expr);
+}
 
 #endif
 %enddef
@@ -4155,7 +4218,6 @@ namespace casadi{
 #endif // SWIGMATLAB
 %include <casadi/core/external.hpp>
 %include <casadi/core/integrator.hpp>
-%include <casadi/core/simulator.hpp>
 %include <casadi/core/conic.hpp>
 %include <casadi/core/nlpsol.hpp>
 %include <casadi/core/rootfinder.hpp>
@@ -4451,19 +4513,27 @@ make_property(casadi::Opti, casadi_solver);
       def parameter(self,*args):
         import sys
         import os
-        frame = sys._getframe(1)
-        meta = {"stacktrace": {"file":os.path.abspath(frame.f_code.co_filename),"line":frame.f_lineno,"name":frame.f_code.co_name}}
+        try:
+            frame = sys._getframe(1)
+        except:
+            frame = {}
+        meta = {} if frame is None else {"stacktrace": {"file":os.path.abspath(frame.f_code.co_filename),"line":frame.f_lineno,"name":frame.f_code.co_name}}
         ret = self._parameter(*args)
-        self.update_user_dict(ret, meta)
+        if len(meta)>0:
+            self.update_user_dict(ret, meta)
         return ret
 
       def variable(self,*args):
         import sys
         import os
-        frame = sys._getframe(1)
-        meta = {"stacktrace": {"file":os.path.abspath(frame.f_code.co_filename),"line":frame.f_lineno,"name":frame.f_code.co_name}}
+        try:
+            frame = sys._getframe(1)
+        except:
+            frame = {}
+        meta = {} if frame is None else {"stacktrace": {"file":os.path.abspath(frame.f_code.co_filename),"line":frame.f_lineno,"name":frame.f_code.co_name}}
         ret = self._variable(*args)
-        self.update_user_dict(ret, meta)
+        if len(meta)>0:
+            self.update_user_dict(ret, meta)
         return ret
 
       def subject_to(self,*args):
@@ -4471,10 +4541,14 @@ make_property(casadi::Opti, casadi_solver);
           return self._subject_to()
         import sys
         import os
-        frame = sys._getframe(1)
-        meta = {"stacktrace": {"file":os.path.abspath(frame.f_code.co_filename),"line":frame.f_lineno,"name":frame.f_code.co_name}}
+        try:
+            frame = sys._getframe(1)
+        except:
+            frame = {}
+        meta = {} if frame is None else {"stacktrace": {"file":os.path.abspath(frame.f_code.co_filename),"line":frame.f_lineno,"name":frame.f_code.co_name}}
         ret = self._subject_to(*args)
-        self.update_user_dict(args[0], meta)
+        if len(meta)>0:
+            self.update_user_dict(args[0], meta)
         return ret
     %}
   }

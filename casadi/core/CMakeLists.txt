@@ -60,7 +60,6 @@ set(CASADI_PUBLIC
   linsol.hpp
   rootfinder.hpp
   integrator.hpp
-  simulator.hpp
   nlpsol.hpp
   conic.hpp
   dple.hpp
@@ -163,6 +162,7 @@ set(CASADI_INTERNAL
   oracle_function.hpp     oracle_function.cpp     # Specialization of FunctionInternal to hold an oracle
   callback.cpp            # Interface for user-defined function classes (public API)
   callback_internal.cpp   callback_internal.hpp   # Interface for user-defined function classes (internal API)
+  casadi_os.cpp           casadi_os.hpp           # Abstractions aroung operating system
   plugin_interface.hpp                                     # Plugin interface for Function
   factory.hpp                                              # Helper class for derivative function generation
   x_function.hpp                                           # Base class for SXFunction and MXFunction
@@ -174,7 +174,6 @@ set(CASADI_INTERNAL
   linsol.cpp              linsol_internal.hpp  linsol_internal.cpp
   rootfinder_impl.hpp     rootfinder.cpp
   integrator_impl.hpp     integrator.cpp
-  simulator_impl.hpp      simulator.cpp
   nlpsol.hpp              nlpsol_impl.hpp        nlpsol.cpp
   conic_impl.hpp          conic.cpp
   dple_impl.hpp           dple.cpp
@@ -216,7 +215,7 @@ foreach(FILE ${CASADI_RUNTIME_SRC})
   set(CASADI_INTERNAL ${CASADI_INTERNAL} runtime/${FILE})
   set(RUNTIME_SRC ${RUNTIME_SRC} runtime/${FILE})
 endforeach()
-set(RUNTIME_SRC ${RUNTIME_SRC} runtime/casadi_to_mex.hpp runtime/casadi_from_mex.hpp)
+set(RUNTIME_SRC ${RUNTIME_SRC} runtime/casadi_to_mex.hpp runtime/casadi_from_mex.hpp runtime/casadi_fmu.hpp)
 
 string (REPLACE ";" "$<SEMICOLON>" ESCAPED_RUNTIME_SRC "${RUNTIME_SRC}")
 
@@ -258,6 +257,15 @@ if(RT)
   target_link_libraries(casadi ${RT})
 endif()
 
+if(CMAKE_CROSS_COMPILING AND MINGW)
+  add_custom_command(TARGET casadi POST_BUILD
+    COMMAND $ENV{DLLTOOL} --dllname $<TARGET_FILE:casadi> --def "${CMAKE_CURRENT_SOURCE_DIR}/casadi.def" --output-lib casadi.lib
+  )
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/casadi.lib"
+    DESTINATION ${DEF_LIB_PREFIX}
+  )
+endif()
+
 install(FILES ${CASADI_PUBLIC} ${CMAKE_CURRENT_BINARY_DIR}/casadi_export.h
   DESTINATION ${INCLUDE_PREFIX}/casadi/core
 )
@@ -268,3 +276,4 @@ if(INSTALL_INTERNAL_HEADERS)
 endif()
 
 target_compile_features(casadi PUBLIC cxx_std_17)
+target_compile_definitions(casadi PUBLIC CASADI_SNPRINTF=snprintf)

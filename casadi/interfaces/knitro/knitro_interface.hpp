@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -143,6 +143,9 @@ namespace casadi {
     // Index pair for complementarity constraints
     std::vector<int> comp_i1_;
     std::vector<int> comp_i2_;
+
+    // KNITRO options file
+    std::string options_file_;
 
     /// A documentation string
     static const std::string meta_doc;

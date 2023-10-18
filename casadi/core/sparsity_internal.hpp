@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *    Copyright (C) 2005-2013 Timothy A. Davis
  *
@@ -535,19 +535,29 @@ namespace casadi {
     /// Is square?
     bool is_square() const;
 
-    /** \brief Is this a permutation matrix? */
+    /** \brief Is this a permutation matrix?
+
+        \identifier{25v} */
     bool is_permutation() const;
 
-    /** \brief Is this a selection matrix */
+    /** \brief Is this a selection matrix
+
+        \identifier{25w} */
     bool is_selection(bool allow_empty=false) const;
 
-    /** \brief Are the rows and columns of the pattern orthonormal ? */
+    /** \brief Are the rows and columns of the pattern orthonormal ?
+
+        \identifier{25x} */
     bool is_orthonormal(bool allow_empty=false) const;
 
-    /** \brief Are the rows of the pattern orthonormal ?  */
+    /** \brief Are the rows of the pattern orthonormal ?
+
+        \identifier{25y} */
     bool is_orthonormal_rows(bool allow_empty=false) const;
 
-    /** \brief  Are the columns of the pattern orthonormal ?*/
+    /** \brief  Are the columns of the pattern orthonormal ?
+
+        \identifier{25z} */
     bool is_orthonormal_columns(bool allow_empty=false) const;
 
     /// Is symmetric?

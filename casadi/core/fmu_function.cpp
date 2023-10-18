@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <algorithm>
 
 #ifdef WITH_OPENMP
 #include <omp.h>
@@ -283,28 +284,27 @@ void Fmu::init(const DaeBuilderInternal* dae) {
   li_ = Importer(dll_path, "dll");
 
   // Get FMI C functions
-  instantiate_ = reinterpret_cast<fmi2InstantiateTYPE*>(load_function("fmi2Instantiate"));
-  free_instance_ = reinterpret_cast<fmi2FreeInstanceTYPE*>(load_function("fmi2FreeInstance"));
-  reset_ = reinterpret_cast<fmi2ResetTYPE*>(load_function("fmi2Reset"));
-  setup_experiment_ = reinterpret_cast<fmi2SetupExperimentTYPE*>(
-    load_function("fmi2SetupExperiment"));
-  enter_initialization_mode_ = reinterpret_cast<fmi2EnterInitializationModeTYPE*>(
-    load_function("fmi2EnterInitializationMode"));
-  exit_initialization_mode_ = reinterpret_cast<fmi2ExitInitializationModeTYPE*>(
-    load_function("fmi2ExitInitializationMode"));
-  enter_continuous_time_mode_ = reinterpret_cast<fmi2EnterContinuousTimeModeTYPE*>(
-    load_function("fmi2EnterContinuousTimeMode"));
-  get_real_ = reinterpret_cast<fmi2GetRealTYPE*>(load_function("fmi2GetReal"));
-  set_real_ = reinterpret_cast<fmi2SetRealTYPE*>(load_function("fmi2SetReal"));
-  get_integer_ = reinterpret_cast<fmi2GetIntegerTYPE*>(load_function("fmi2GetInteger"));
-  set_integer_ = reinterpret_cast<fmi2SetIntegerTYPE*>(load_function("fmi2SetInteger"));
-  get_boolean_ = reinterpret_cast<fmi2GetBooleanTYPE*>(load_function("fmi2GetBoolean"));
-  set_boolean_ = reinterpret_cast<fmi2SetBooleanTYPE*>(load_function("fmi2SetBoolean"));
-  get_string_ = reinterpret_cast<fmi2GetStringTYPE*>(load_function("fmi2GetString"));
-  set_string_ = reinterpret_cast<fmi2SetStringTYPE*>(load_function("fmi2SetString"));
+  instantiate_ = load_function<fmi2InstantiateTYPE>("fmi2Instantiate");
+  free_instance_ = load_function<fmi2FreeInstanceTYPE>("fmi2FreeInstance");
+  reset_ = load_function<fmi2ResetTYPE>("fmi2Reset");
+  setup_experiment_ = load_function<fmi2SetupExperimentTYPE>("fmi2SetupExperiment");
+  enter_initialization_mode_ = load_function<fmi2EnterInitializationModeTYPE>(
+    "fmi2EnterInitializationMode");
+  exit_initialization_mode_ = load_function<fmi2ExitInitializationModeTYPE>(
+    "fmi2ExitInitializationMode");
+  enter_continuous_time_mode_ = load_function<fmi2EnterContinuousTimeModeTYPE>(
+    "fmi2EnterContinuousTimeMode");
+  get_real_ = load_function<fmi2GetRealTYPE>("fmi2GetReal");
+  set_real_ = load_function<fmi2SetRealTYPE>("fmi2SetReal");
+  get_integer_ = load_function<fmi2GetIntegerTYPE>("fmi2GetInteger");
+  set_integer_ = load_function<fmi2SetIntegerTYPE>("fmi2SetInteger");
+  get_boolean_ = load_function<fmi2GetBooleanTYPE>("fmi2GetBoolean");
+  set_boolean_ = load_function<fmi2SetBooleanTYPE>("fmi2SetBoolean");
+  get_string_ = load_function<fmi2GetStringTYPE>("fmi2GetString");
+  set_string_ = load_function<fmi2SetStringTYPE>("fmi2SetString");
   if (dae->provides_directional_derivative_) {
-    get_directional_derivative_ = reinterpret_cast<fmi2GetDirectionalDerivativeTYPE*>(
-      load_function("fmi2GetDirectionalDerivative"));
+    get_directional_derivative_ = load_function<fmi2GetDirectionalDerivativeTYPE>(
+      "fmi2GetDirectionalDerivative");
   }
 
   // Callback functions
@@ -347,13 +347,14 @@ void Fmu::init(const DaeBuilderInternal* dae) {
   free_instance(c);
 }
 
-signal_t Fmu::load_function(const std::string& symname) {
+template<typename T>
+T* Fmu::load_function(const std::string& symname) {
   // Load the function
   signal_t f = li_.get_function(symname);
   // Ensure that it was found
   casadi_assert(f != 0, "Cannot retrieve '" + symname + "'");
-  // Return function to be type converted
-  return f;
+  // Return function with the right type
+  return reinterpret_cast<T*>(f);
 }
 
 void Fmu::logger(fmi2ComponentEnvironment componentEnvironment,
@@ -1626,6 +1627,11 @@ InputStruct InputStruct::parse(const std::string& n, const Fmu* fmu,
       s.type = InputType::ADJ;
       s.ind = fmu ? fmu->index_out(rem) : 0;
       if (name_out) name_out->push_back(rem);
+    } else if (pref == "in") {
+      // Regular input in derivative function
+      s.type = InputType::REG;
+      s.ind = fmu ? fmu->index_in(rem) : 0;
+      if (name_in) name_in->push_back(rem);
     } else {
       // No such prefix
       casadi_error("No such prefix: " + pref);
@@ -1675,6 +1681,13 @@ OutputStruct OutputStruct::parse(const std::string& n, const Fmu* fmu,
             if (name_in) name_in->push_back(sens);
             s.wrt = fmu ? fmu->index_out(rem) : -1;
             if (name_in) name_out->push_back(rem);
+          } else if (pref == "in") {
+            // Hessian output
+            s.type = OutputType::HESS;
+            s.ind = fmu ? fmu->index_in(sens) : -1;
+            if (name_in) name_in->push_back(sens);
+            s.wrt = fmu ? fmu->index_in(rem) : -1;
+            if (name_in) name_in->push_back(rem);
           } else {
             casadi_error("No such prefix: " + pref);
           }
@@ -2364,6 +2377,35 @@ bool FmuFunction::all_vectors() const {
   }
   // OK if reached this point
   return true;
+}
+
+Function FmuFunction::factory(const std::string& name,
+    const std::vector<std::string>& s_in,
+    const std::vector<std::string>& s_out,
+    const Function::AuxOut& aux,
+    const Dict& opts) const {
+  // Assume we can call constructor directly
+  try {
+    // Hack: Inherit parallelization, verbosity option
+    Dict opts1 = opts;
+    opts1["parallelization"] = to_string(parallelization_);
+    opts1["verbose"] = verbose_;
+    opts1["print_progress"] = print_progress_;
+    // Replace ':' with '_' in s_in and s_out
+    std::vector<std::string> s_in_mod = s_in, s_out_mod = s_out;
+    for (std::string& s : s_in_mod) std::replace(s.begin(), s.end(), ':', '_');
+    for (std::string& s : s_out_mod) std::replace(s.begin(), s.end(), ':', '_');
+    // New instance of the same class, using the same Fmu instance
+    Function ret;
+    ret.own(new FmuFunction(name, fmu_, s_in_mod, s_out_mod));
+    ret->construct(opts1);
+    return ret;
+  } catch (std::exception& e) {
+    casadi_warning("FmuFunction::factory call for constructing " + name + " from " + name_
+      + " failed:\n" + std::string(e.what()) + "\nFalling back to base class implementation");
+  }
+  // Fall back to base class
+  return FunctionInternal::factory(name, s_in, s_out, aux, opts);
 }
 
 bool FmuFunction::has_jacobian() const {

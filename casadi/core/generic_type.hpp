@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -275,7 +275,7 @@ namespace casadi {
       \identifier{17t} */
   CASADI_EXPORT Dict combine(const Dict& first, const Dict& second, bool recurse=false);
 
-  /** \brief Update the target dictorionary in place with source elements
+  /** \brief Update the target dictionary in place with source elements
 
       \identifier{17u} */
   CASADI_EXPORT void update_dict(Dict& target, const Dict& source, bool recurse=false);

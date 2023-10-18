@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -189,7 +189,13 @@ namespace casadi {
         "Reuse variables in the work vector"}},
       {"cse",
        {OT_BOOL,
-        "Perform common subexpression elimination (complexity is N*log(N) in graph size)"}}
+        "Perform common subexpression elimination (complexity is N*log(N) in graph size)"}},
+      {"allow_free",
+       {OT_BOOL,
+        "Allow construction with free variables (Default: false)"}},
+      {"allow_duplicate_io_names",
+       {OT_BOOL,
+        "Allow construction with duplicate io names (Default: false)"}}
      }
   };
 
@@ -211,6 +217,7 @@ namespace casadi {
     live_variables_ = true;
 
     bool cse_opt = false;
+    bool allow_free = false;
 
     // Read options
     for (auto&& op : opts) {
@@ -224,6 +231,8 @@ namespace casadi {
         just_in_time_sparsity_ = op.second;
       } else if (op.first=="cse") {
         cse_opt = op.second;
+      } else if (op.first=="allow_free") {
+        allow_free = op.second;
       }
     }
 
@@ -461,6 +470,13 @@ namespace casadi {
         // Remove marker
         it->second->temp=0;
       }
+    }
+
+    if (!allow_free && has_free()) {
+      casadi_error(name_ + "::init: Initialization failed since variables [" +
+      join(get_free(), "") + "] are free. These symbols occur in the output expressions "
+      "but you forgot to declare these as inputs. "
+      "Set option 'allow_free' to allow free variables.");
     }
 
     // Initialize just-in-time compilation for numeric evaluation using OpenCL

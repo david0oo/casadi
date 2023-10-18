@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -39,6 +39,7 @@
 #include "xml_file.hpp"
 #include "external.hpp"
 #include "fmu_function.hpp"
+#include "integrator.hpp"
 
 // Throw informative error message
 #define THROW_ERROR_NODE(FNAME, NODE, WHAT) \
@@ -296,7 +297,7 @@ XmlNode Variable::export_xml(const DaeBuilderInternal& self) const {
   // Name of variable
   r.set_attribute("name", name);
   // Value reference
-  r.set_attribute("valueReference", std::to_string(value_reference));
+  r.set_attribute("valueReference", value_reference);
   // Description, if any
   if (!description.empty()) r.set_attribute("description", description);
   // Causality
@@ -308,17 +309,17 @@ XmlNode Variable::export_xml(const DaeBuilderInternal& self) const {
   // Minimum attribute
   if (min != -inf) {
     if (is_real()) {
-      r.set_attribute("min", std::to_string(min));
+      r.set_attribute("min", min);
     } else {
-      r.set_attribute("min", std::to_string(static_cast<casadi_int>(min)));
+      r.set_attribute("min", static_cast<casadi_int>(min));
     }
   }
   // Maximum attribute
   if (max != inf) {
     if (is_real()) {
-      r.set_attribute("max", std::to_string(max));
+      r.set_attribute("max", max);
     } else {
-      r.set_attribute("max", std::to_string(static_cast<casadi_int>(max)));
+      r.set_attribute("max", static_cast<casadi_int>(max));
     }
   }
   // Unit
@@ -326,9 +327,7 @@ XmlNode Variable::export_xml(const DaeBuilderInternal& self) const {
   // Display unit
   if (!display_unit.empty()) r.set_attribute("displayUnit", display_unit);
   // Nominal value, only for floats
-  if (is_real() && nominal != 1.) {
-      r.set_attribute("nominal", std::to_string(nominal));
-  }
+  if (is_real() && nominal != 1.) r.set_attribute("nominal", nominal);
   // Start attribute, if any
   if (has_start()) {
     if (type == Type::BINARY || type == Type::STRING) {
@@ -349,7 +348,7 @@ XmlNode Variable::export_xml(const DaeBuilderInternal& self) const {
   }
   // Derivative attribute, if any
   if (der_of >= 0) {
-      r.set_attribute("derivative", std::to_string(self.variable(der_of).value_reference));
+      r.set_attribute("derivative", self.variable(der_of).value_reference);
   }
   // Return XML representation
   return r;
@@ -426,39 +425,6 @@ void DaeBuilderInternal::load_fmi_description(const std::string& filename) {
   if (fmi_desc.has_child("ModelStructure"))
     import_model_structure(fmi_desc["ModelStructure"]);
 
-  // Postprocess / sort variables
-  for (size_t k = 0; k < n_variables(); ++k) {
-    // Get reference to the variable
-    Variable& v = variable(k);
-    // Skip variable if name starts with underscore
-    if (v.name.rfind("_", 0) == 0) continue;
-    // Sort by types
-    if (v.causality == Causality::INDEPENDENT) {
-      // Independent (time) variable
-      t_.push_back(k);
-    } else if (v.causality == Causality::INPUT) {
-      u_.push_back(k);
-    } else if (v.variability == Variability::CONSTANT) {
-      // Named constant
-      c_.push_back(k);
-      v.beq = v.start;
-    } else if (v.variability == Variability::FIXED || v.variability == Variability::TUNABLE) {
-      p_.push_back(k);
-    } else if (v.variability == Variability::CONTINUOUS) {
-      // Add to list of differential equations?
-      if (v.der >= 0) {
-        x_.push_back(k);
-      }
-      // Is it (also) an output variable?
-      if (v.causality == Causality::OUTPUT) {
-        y_.push_back(k);
-        v.beq = v.v;
-      }
-    } else if (v.dependency) {
-      casadi_warning("Cannot sort " + v.name);
-    }
-  }
-
   // **** Add binding equations ****
   if (fmi_desc.has_child("equ:BindingEquations")) {
     // Get a reference to the BindingEquations node
@@ -528,8 +494,44 @@ void DaeBuilderInternal::load_fmi_description(const std::string& filename) {
   }
 }
 
-XmlNode DaeBuilderInternal::generate_model_description() const {
-  casadi_warning("FMU generation is experimental")
+std::string DaeBuilderInternal::generate_build_description(
+    const std::vector<std::string>& cfiles) const {
+  // Default arguments
+  int fmi_major = 3;
+  int fmi_minor = 0;
+  std::string model_name = name_;
+  // Construct XML file
+  XmlNode r;
+  // Preamble
+  r.name = "fmiBuildDescription";
+  r.set_attribute("fmiVersion", std::to_string(fmi_major) + "." + std::to_string(fmi_minor));
+  // Set of source files
+  XmlNode source_file_set;
+  source_file_set.name = "SourceFileSet";
+  for (auto&& f : cfiles) {
+    XmlNode source_file;
+    source_file.name = "SourceFile";
+    source_file.set_attribute("name", f);
+    source_file_set.children.push_back(source_file);
+  }
+  // Build configurations
+  XmlNode bc;
+  bc.name = "BuildConfiguration";
+  bc.set_attribute("modelIdentifier", model_name);
+  bc.children.push_back(source_file_set);
+  r.children.push_back(bc);
+  // XML file name
+  std::string xml_filename = "buildDescription.xml";
+  // Construct ModelDescription
+  XmlNode build_description;
+  build_description.children.push_back(r);
+  // Export to file
+  XmlFile xml_file("tinyxml");
+  xml_file.dump(xml_filename, build_description);
+  return xml_filename;
+}
+
+std::string DaeBuilderInternal::generate_model_description(const std::string& guid) const {
   // Default arguments
   int fmi_major = 3;
   int fmi_minor = 0;
@@ -539,13 +541,13 @@ XmlNode DaeBuilderInternal::generate_model_description() const {
   std::string version;  // none
   std::string copyright;  // none
   std::string license;  // none
-  // Return object
+  // Construct XML file
   XmlNode r;
   // Preamble
   r.name = "fmiModelDescription";
   r.set_attribute("fmiVersion", std::to_string(fmi_major) + "." + std::to_string(fmi_minor));
   r.set_attribute("modelName", model_name);
-  r.set_attribute(fmi_major >= 3 ? "instantiationToken" : "guid", generate_guid());
+  r.set_attribute(fmi_major >= 3 ? "instantiationToken" : "guid", guid);
   if (!description.empty()) r.set_attribute("description", description);
   if (!author.empty()) r.set_attribute("author", author);
   if (!version.empty()) r.set_attribute("version", version);
@@ -564,9 +566,17 @@ XmlNode DaeBuilderInternal::generate_model_description() const {
   r.children.push_back(generate_model_variables());
   // Model structure
   r.children.push_back(generate_model_structure());
-  // Return the model description representation
-  return r;
+  // XML file name
+  std::string xml_filename = "modelDescription.xml";
+  // Construct ModelDescription
+  XmlNode model_description;
+  model_description.children.push_back(r);
+  // Export to file
+  XmlFile xml_file("tinyxml");
+  xml_file.dump(xml_filename, model_description);
+  return xml_filename;
 }
+
 
 XmlNode DaeBuilderInternal::generate_model_variables() const {
   XmlNode r;
@@ -581,56 +591,235 @@ XmlNode DaeBuilderInternal::generate_model_structure() const {
   XmlNode r;
   r.name = "ModelStructure";
   // Add outputs
-  for (size_t y : y_) {
+  for (size_t i : y_) {
+    const Variable& y = variable(i);
     XmlNode c;
     c.name = "Output";
-    c.set_attribute("valueReference", std::to_string(variable(y).value_reference));
-    r.children.push_back(c);
+    c.set_attribute("valueReference", y.value_reference);
+    c.set_attribute("dependencies", y.dependencies);
+ r.children.push_back(c);
   }
   // Add state derivatives
-  for (size_t x : x_) {
+  for (size_t i : x_) {
+    const Variable& xdot = variable(variable(i).der);
     XmlNode c;
     c.name = "ContinuousStateDerivative";
-    c.set_attribute("valueReference",
-      std::to_string(variable(variable(x).der).value_reference));
+    c.set_attribute("valueReference", xdot.value_reference);
+    c.set_attribute("dependencies", xdot.dependencies);
     r.children.push_back(c);
   }
-  // Add initial unknowns: States
-  for (size_t x : x_) {
+  // Add initial unknowns: Outputs
+  for (size_t i : y_) {
+    const Variable& y = variable(i);
     XmlNode c;
     c.name = "InitialUnknown";
-    c.set_attribute("valueReference",
-      std::to_string(variable(x).value_reference));
+    c.set_attribute("valueReference", y.value_reference);
+    c.set_attribute("dependencies", y.dependencies);
     r.children.push_back(c);
   }
   // Add initial unknowns: State derivative
-  for (size_t x : x_) {
+  for (size_t i : x_) {
+    const Variable& xdot = variable(variable(i).der);
     XmlNode c;
     c.name = "InitialUnknown";
-    c.set_attribute("valueReference",
-      std::to_string(variable(variable(x).der).value_reference));
+    c.set_attribute("valueReference", xdot.value_reference);
+    c.set_attribute("dependencies", xdot.dependencies);
     r.children.push_back(c);
   }
   return r;
 }
 
-void DaeBuilderInternal::export_fmu(const std::string& file_prefix, const Dict& opts) {
-  (void)opts;  // unused
-  // Path separator
-#ifdef _WIN32
-  char sep = '\\';
-#else
-  char sep = '/';
-#endif
-  // XML file name
-  std::string xml_filename = "modelDescription.xml";
-  if (!file_prefix.empty()) xml_filename = file_prefix + sep + xml_filename;
-  // Construct ModelDescription
-  XmlNode model_description;
-  model_description.children.push_back(generate_model_description());
-  // Export to file
-  XmlFile xml_file("tinyxml");
-  xml_file.dump(xml_filename, model_description);
+void DaeBuilderInternal::update_dependencies() const {
+  // Get oracle function
+  const Function& oracle = this->oracle();
+  // Dependendencies of the ODE right-hand-side
+  Sparsity dode_dxT = oracle.jac_sparsity(oracle.index_out("ode"), oracle.index_in("x")).T();
+  Sparsity dode_duT = oracle.jac_sparsity(oracle.index_out("ode"), oracle.index_in("u")).T();
+  for (casadi_int i = 0; i < x_.size(); ++i) {
+    // Get output variable
+    const Variable& xdot = variable(variable(x_.at(i)).der);
+    // Clear dependencies
+    xdot.dependencies.clear();
+    // Dependencies on states
+    for (casadi_int k = dode_dxT.colind(i); k < dode_dxT.colind(i + 1); ++k) {
+      casadi_int j = dode_dxT.row(k);
+      xdot.dependencies.push_back(variable(x_.at(j)).value_reference);
+    }
+    // Dependencies on controls
+    for (casadi_int k = dode_duT.colind(i); k < dode_duT.colind(i + 1); ++k) {
+      casadi_int j = dode_duT.row(k);
+      xdot.dependencies.push_back(variable(u_.at(j)).value_reference);
+    }
+  }
+  // Dependendencies of the output function
+  Sparsity dydef_dxT = oracle.jac_sparsity(oracle.index_out("ydef"), oracle.index_in("x")).T();
+  Sparsity dydef_duT = oracle.jac_sparsity(oracle.index_out("ydef"), oracle.index_in("u")).T();
+  for (casadi_int i = 0; i < y_.size(); ++i) {
+    // Get output variable
+    const Variable& y = variable(y_.at(i));
+    // Clear dependencies
+    y.dependencies.clear();
+    // Dependencies on states
+    for (casadi_int k = dydef_dxT.colind(i); k < dydef_dxT.colind(i + 1); ++k) {
+      casadi_int j = dydef_dxT.row(k);
+      y.dependencies.push_back(variable(x_.at(j)).value_reference);
+    }
+    // Dependencies on controls
+    for (casadi_int k = dydef_duT.colind(i); k < dydef_duT.colind(i + 1); ++k) {
+      casadi_int j = dydef_duT.row(k);
+      y.dependencies.push_back(variable(u_.at(j)).value_reference);
+    }
+  }
+}
+
+std::vector<std::string> DaeBuilderInternal::export_fmu(const Dict& opts) const {
+  // Default options
+  bool no_warning = false;
+  for (auto&& op : opts) {
+    if (op.first == "no_warning") {
+      no_warning = op.second;
+    }
+  }
+  // Feature incomplete
+  if (!no_warning) casadi_warning("FMU generation is experimental and incomplete")
+  // Return object
+  std::vector<std::string> ret;
+  // GUID
+  std::string guid = generate_guid();
+  // Generate model function
+  std::string dae_filename = name_;
+  Function dae = shared_from_this<DaeBuilder>().create(dae_filename,
+    {"t", "x", "p", "u"}, {"ode", "ydef"});
+  // Generate C code for model equations
+  Dict codegen_opts;
+  codegen_opts["with_header"] = true;
+  CodeGenerator gen(dae_filename, codegen_opts);
+  gen.add(dae);
+  gen.add(dae.forward(1));
+  gen.add(dae.reverse(1));
+  ret.push_back(gen.generate());
+  ret.push_back(dae_filename + ".h");
+  // Make sure dependencies are up-to-date
+  update_dependencies();
+  // Generate FMU wrapper file
+  std::string wrapper_filename = generate_wrapper(guid, gen);
+  ret.push_back(wrapper_filename);
+  // Generate build description
+  ret.push_back(generate_build_description(ret));
+  // Generate modelDescription file
+  ret.push_back(generate_model_description(guid));
+  // Return list of files
+  return ret;
+}
+
+std::string DaeBuilderInternal::generate(const std::vector<size_t>& v) {
+  std::stringstream ss;
+  ss << "{";
+  bool first = true;
+  for (double e : v) {
+    // Separator
+    if (!first) ss << ", ";
+    first = false;
+    // Print element
+    ss << e;
+  }
+  ss << "}";
+  return ss.str();
+}
+
+std::string DaeBuilderInternal::generate(const std::vector<double>& v) {
+  std::stringstream ss;
+  ss << "{";
+  bool first = true;
+  for (double e : v) {
+    // Separator
+    if (!first) ss << ", ";
+    first = false;
+    // Print element
+    ss << std::scientific << std::setprecision(std::numeric_limits<double>::digits10 + 1) << e;
+  }
+  ss << "}";
+  return ss.str();
+}
+
+std::vector<double> DaeBuilderInternal::start_all() const {
+  std::vector<double> r;
+  for (const Variable* v : variables_) {
+    for (double s : v->start) r.push_back(s);
+  }
+  return r;
+}
+
+std::string DaeBuilderInternal::generate_wrapper(const std::string& guid,
+    const CodeGenerator& gen) const {
+  // Create file
+  std::string wrapper_filename = name_ + "_wrap.c";
+  std::ofstream f;
+  CodeGenerator::file_open(f, wrapper_filename, false);
+
+  // Add includes
+  f << "#include <fmi3Functions.h>\n"
+    << "#include \"" << name_ << ".h\"\n"
+    << "\n";
+
+  // Total number of variables
+  f << "#define N_VAR " << n_variables() << "\n";
+
+  // Memory size
+  f << "#define SZ_MEM " << n_mem() << "\n";
+
+  // Work vectors sizes
+  size_t sz_arg, sz_res, sz_iw, sz_w;
+  gen.sz_work(sz_arg, sz_res, sz_iw, sz_w);
+  f << "#define SZ_ARG " << sz_arg << "\n"
+    << "#define SZ_RES " << sz_res << "\n"
+    << "#define SZ_IW " << sz_iw << "\n"
+    << "#define SZ_W " << sz_w << "\n";
+
+  // Memory offsets
+  f << "const size_t var_offset[N_VAR + 1] = {0";
+  size_t mem_ind = 0;
+  for (const Variable* v : variables_) {
+    mem_ind += v->numel;
+    f << ", " << mem_ind;
+  }
+  f << "};\n\n";
+
+  // Start attributes
+  f << "casadi_real start[SZ_MEM] = " << generate(start_all()) << ";\n\n";
+
+  // States
+  f << "#define N_X " << x_.size() << "\n"
+    << "fmi3ValueReference x_vr[N_X] = " << generate(x_) << ";\n"
+    << "\n";
+
+  // Controls
+  f << "#define N_U " << u_.size() << "\n"
+    << "fmi3ValueReference u_vr[N_U] = " << generate(u_) << ";\n"
+    << "\n";
+
+  // Parameters
+  f << "#define N_P " << p_.size() << "\n"
+    << "fmi3ValueReference p_vr[N_P] = " << generate(p_) << ";\n"
+    << "\n";
+
+  // State derivatives
+  std::vector<size_t> xdot;
+  for (size_t v : x_) xdot.push_back(variable(v).der);
+  f << "fmi3ValueReference xdot_vr[N_X] = " << generate(xdot) << ";\n"
+    << "\n";
+
+  // Outputs
+  f << "#define N_Y " << y_.size() << "\n"
+    << "fmi3ValueReference y_vr[N_Y] = " << generate(y_) << ";\n"
+    << "\n";
+
+  // Memory structure
+  f << CodeGenerator::fmu_helpers(name_);
+
+  // Finalize file
+  CodeGenerator::file_close(f, false);
+  return wrapper_filename;
 }
 
 Variable& DaeBuilderInternal::read_variable(const XmlNode& node) {
@@ -962,24 +1151,12 @@ const std::vector<size_t>& DaeBuilderInternal::ind_in(const std::string& v) cons
   return const_cast<DaeBuilderInternal*>(this)->ind_in(v);
 }
 
-void DaeBuilderInternal::set_z(const std::vector<std::string>& name,
-    const std::vector<std::string>& alg) {
-  // Remove existing z
-  z_.clear();
-  // New z
-  z_.resize(name.size());
-  for (size_t k = 0; k < z_.size(); ++k) z_[k] = find(name[k]);
-  // Specify algebraic variables, if any
-  if (!alg.empty()) {
-    // Consistency check
-    casadi_assert(alg.size() == name.size(), "Inconsistent number of algebraic variables");
-    // Set alg property
-    for (size_t k = 0; k < z_.size(); ++k) variable(z_[k]).alg = find(alg[k]);
-  }
+void DaeBuilderInternal::clear_all(const std::string& v) {
+  ind_in(v).clear();
 }
 
-void DaeBuilderInternal::clear_in(const std::string& v) {
-  ind_in(v).clear();
+void DaeBuilderInternal::set_all(const std::string& v, const std::vector<std::string>& name) {
+  ind_in(v) = find(name);
 }
 
 void DaeBuilderInternal::prune(bool prune_p, bool prune_u) {
@@ -1196,6 +1373,12 @@ std::vector<std::string> DaeBuilderInternal::all_variables() const {
   r.reserve(n_variables());
   for (const Variable* v : variables_) r.push_back(v->name);
   return r;
+}
+
+size_t DaeBuilderInternal::n_mem() const {
+  size_t n = 0;
+  for (const Variable* v : variables_) n += v->numel;
+  return n;
 }
 
 Variable& DaeBuilderInternal::new_variable(const std::string& name, casadi_int numel, const MX& v) {
@@ -1765,26 +1948,30 @@ const Function& DaeBuilderInternal::oracle(bool sx, bool elim_w, bool lifted_cal
     casadi_assert(!(elim_w && lifted_calls), "Incompatible options");
     // Do we need to substitute out v
     bool subst_v = false;
-    // Collect all DAE input variables with at least one entry
-    for (casadi_int i = 0; i != DAE_BUILDER_NUM_IN; ++i) {
-      if (i == DAE_BUILDER_Y) continue;  // fixme
+    // Collect all DAE input variables
+    for (size_t i = 0; i != DAE_BUILDER_NUM_IN; ++i) {
+      if (i == DAE_BUILDER_Y) continue;  // fixme2
+      f_in_name.push_back(to_string(static_cast<DaeBuilderInternalIn>(i)));
       v = input(static_cast<DaeBuilderInternalIn>(i));
-      if (!v.empty()) {
+      if (v.empty()) {
+        f_in.push_back(MX(0, 1));
+      } else {
         if (elim_w && i == DAE_BUILDER_W) {
           subst_v = true;
         } else {
           f_in.push_back(vertcat(v));
-          f_in_name.push_back(to_string(static_cast<DaeBuilderInternalIn>(i)));
         }
       }
     }
-    // Collect all DAE output variables with at least one entry
-    for (casadi_int i = 0; i != DAE_BUILDER_NUM_OUT; ++i) {
+    // Collect all DAE output variables
+    for (size_t i = 0; i != DAE_BUILDER_NUM_OUT; ++i) {
+      f_out_name.push_back(to_string(static_cast<DaeBuilderInternalOut>(i)));
       v = output(static_cast<DaeBuilderInternalOut>(i));
-      if (!v.empty()) {
+      if (v.empty()) {
+        f_out.push_back(MX(0, 1));
+      } else {
         if (i == DAE_BUILDER_WDEF) wdef_ind = f_out.size();
         f_out.push_back(vertcat(v));
-        f_out_name.push_back(to_string(static_cast<DaeBuilderInternalOut>(i)));
       }
     }
     // Eliminate v from inputs
@@ -2050,6 +2237,9 @@ Function DaeBuilderInternal::fmu_fun(const std::string& name,
       casadi_error(std::string("Cannot read 'scheme': ") + e.what());
     }
   } else {
+    // Initialize all scheme entries
+    for (auto&& s : dyn_in()) scheme[s] = std::vector<size_t>();
+    for (auto&& s : dyn_out()) scheme[s] = std::vector<size_t>();
     // Default IO scheme
     scheme["t"] = ind_in("t");
     scheme["x"] = ind_in("x");
@@ -2385,6 +2575,15 @@ void DaeBuilderInternal::import_model_variables(const XmlNode& modvars) {
     } else {
       casadi_warning("Unknown type for " + name);
     }
+    // Initial classification of variables (states/outputs to be added later)
+    if (var.causality == Causality::INDEPENDENT) {
+      // Independent (time) variable
+      t_.push_back(var.index);
+    } else if (var.causality == Causality::INPUT) {
+      u_.push_back(var.index);
+    } else if (var.variability == Variability::TUNABLE) {
+      p_.push_back(var.index);
+    }
   }
   // Handle derivatives
   for (size_t i = 0; i < n_variables(); ++i) {
@@ -2405,6 +2604,11 @@ void DaeBuilderInternal::import_model_structure(const XmlNode& n) {
       outputs_.push_back(e.attribute<casadi_int>("index", 0) - 1);
       // Corresponding variable
       Variable& v = variable(outputs_.back());
+      // Add to y, unless state
+      if (v.der < 0) {
+        y_.push_back(v.index);
+        v.beq = v.v;
+      }
       // Get dependencies
       v.dependencies = e.attribute<std::vector<casadi_int>>("dependencies", {});
       // dependenciesKind attribute, if present
@@ -2430,6 +2634,9 @@ void DaeBuilderInternal::import_model_structure(const XmlNode& n) {
       derivatives_.push_back(e.attribute<casadi_int>("index", 0) - 1);
       // Corresponding variable
       Variable& v = variable(derivatives_.back());
+      // Add to list of states
+      casadi_assert(v.der_of >= 0, "Error processing derivative info for " + v.name);
+      x_.push_back(v.der_of);
       // Get dependencies
       v.dependencies = e.attribute<std::vector<casadi_int>>("dependencies", {});
       // dependenciesKind attribute, if present
@@ -2653,16 +2860,27 @@ Sparsity DaeBuilderInternal::hess_sparsity(const std::vector<size_t>& oind,
 
 std::string DaeBuilderInternal::iso_8601_time() {
   // Get current time
-  std::time_t now = std::time({});
-  // Convert to ISO 8601 format and return
-  std::string format = "YYYY-MM-DDThh:mm:ssZ";
-  std::vector<char> buf(format.size());
-  std::strftime(&buf.front(), buf.size(), "%FT%TZ",
-    std::gmtime(&now));  // NOLINT(runtime/threadsafe_fn)
-  return &buf.front();
+  auto now = std::chrono::system_clock::now();
+  std::time_t tt = std::chrono::system_clock::to_time_t(now);
+  auto local_tm = *std::localtime(&tt);  // NOLINT(runtime/threadsafe_fn)
+  // Convert to ISO 8601 (YYYY-MM-DDThh:mm:ssZ) format and return
+  std::stringstream ss;
+  ss << local_tm.tm_year + 1900 << '-';  // YYYY-
+  ss << std::setfill('0') << std::setw(2) << local_tm.tm_mon + 1 << '-';  // MM-
+  ss << std::setfill('0') << std::setw(2) << local_tm.tm_mday << 'T';  // DDT
+  ss << std::setfill('0') << std::setw(2) << local_tm.tm_hour << ':';  // hh:
+  ss << std::setfill('0') << std::setw(2) << local_tm.tm_min << ':';  // mm:
+  ss << std::setfill('0') << std::setw(2) << local_tm.tm_sec << 'Z'; // ssZ
+  return ss.str();
 }
 
 std::string DaeBuilderInternal::generate_guid() {
+  // Initialize random seed
+  static bool initialized = false;
+  if (!initialized) {
+      srand(time(nullptr));  // NOLINT(runtime/threadsafe_fn)
+    initialized = true;
+  }
   // Possible characters
   const char h[] = "0123456789abcdef";
   // Length of GUID

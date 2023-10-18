@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -262,7 +262,10 @@ namespace casadi {
          .map("map", "serial", nfwd, {0, 1}, std::vector<casadi_int>{})({A, P, Adot, Vdot})[0];
     MX Pdot = dplesol(A, Qdot, plugin_name(), opts);
     MX V = MX::sym("V", Sparsity(size_in(DPLE_V))); // We dont need V
-    return Function(name, {A, V, P, Adot, Vdot}, {Pdot}, inames, onames);
+
+    Dict options;
+    options["allow_duplicate_io_names"] = true;
+    return Function(name, {A, V, P, Adot, Vdot}, {Pdot}, inames, onames, options);
 
   }
 
@@ -319,8 +322,11 @@ namespace casadi {
                     map("map", "serial", nadj, {0, 1}, std::vector<casadi_int>{})(
                       {P, A_rev, Vbar_rev})[0];
 
+    Dict options;
+    options["allow_duplicate_io_names"] = true;
+
     MX V = MX::sym("V", Sparsity(size_in(DPLE_V))); // We dont need V
-    return Function(name, {A, V, P, Pbar}, {Abar, Vbar}, inames, onames);
+    return Function(name, {A, V, P, Pbar}, {Abar, Vbar}, inames, onames, options);
   }
 
   Dple::~Dple() {

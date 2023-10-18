@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -234,8 +234,10 @@ namespace casadi {
     // Ignore seed for ind
     arg.insert(arg.begin() + n_in_ + n_out_, MX(1, nfwd));
 
+    Dict options = opts;
+    options["allow_duplicate_io_names"] = true;
     // Create wrapper
-    return Function(name, arg, res, inames, onames, opts);
+    return Function(name, arg, res, inames, onames, options);
   }
 
   Function Switch
@@ -263,8 +265,11 @@ namespace casadi {
     // No derivatives with respect to index
     res.insert(res.begin(), MX(1, nadj));
 
+    Dict options = opts;
+    options["allow_duplicate_io_names"] = true;
+
     // Create wrapper
-    return Function(name, arg, res, inames, onames, opts);
+    return Function(name, arg, res, inames, onames, options);
   }
 
   void Switch::disp_more(std::ostream &stream) const {

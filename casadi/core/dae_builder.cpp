@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@
 #include "calculus.hpp"
 #include "xml_file.hpp"
 #include "external.hpp"
-#include "simulator.hpp"
+#include "integrator.hpp"
 
 namespace casadi {
 
@@ -227,9 +227,19 @@ void DaeBuilder::load_fmi_description(const std::string& filename) {
   }
 }
 
-void DaeBuilder::export_fmu(const std::string& file_prefix, const Dict& opts) {
+bool DaeBuilder::provides_directional_derivative() const {
   try {
-    (*this)->export_fmu(file_prefix, opts);
+    casadi_assert(!(*this)->symbolic_, "Functionality only applies to imported standard FMUs");
+    return (*this)->provides_directional_derivative_;
+  } catch (std::exception& e) {
+    THROW_ERROR("provides_directional_derivative", e.what());
+    return false;
+  }
+}
+
+std::vector<std::string> DaeBuilder::export_fmu(const Dict& opts) {
+  try {
+    return (*this)->export_fmu(opts);
   } catch (std::exception& e) {
     THROW_ERROR("export_fmu", e.what());
   }
@@ -384,49 +394,36 @@ void DaeBuilder::register_y(const std::string& name) {
 
 void DaeBuilder::set_z(const std::vector<std::string>& name, const std::vector<std::string>& alg) {
   try {
-    (*this)->set_z(name, alg);
+    // Consistency check
+    if (!alg.empty()) {
+      casadi_assert(alg.size() == name.size(), "Inconsistent number of algebraic variables");
+    }
+
+    // Update z
+    set_all("z", name);
+
+    // Update algebraic equations
+    if (!alg.empty()) {
+      for (size_t i = 0; i < name.size(); ++i) variable(name[i]).alg = find(alg[i]);
+    }
   } catch (std::exception& e) {
     THROW_ERROR("set_z", e.what());
   }
 }
 
-void DaeBuilder::set_u(const std::vector<std::string>& name) {
+void DaeBuilder::clear_all(const std::string& v) {
   try {
-    (*this)->u_ = find(name);
+    (*this)->clear_all(v);
   } catch (std::exception& e) {
-    THROW_ERROR("set_u", e.what());
+    THROW_ERROR("clear_all", e.what());
   }
 }
 
-void DaeBuilder::set_x(const std::vector<std::string>& name) {
+void DaeBuilder::set_all(const std::string& v, const std::vector<std::string>& name) {
   try {
-    (*this)->x_ = find(name);
+    (*this)->set_all(v, name);
   } catch (std::exception& e) {
-    THROW_ERROR("set_x", e.what());
-  }
-}
-
-void DaeBuilder::set_q(const std::vector<std::string>& name) {
-  try {
-    (*this)->q_ = find(name);
-  } catch (std::exception& e) {
-    THROW_ERROR("set_q", e.what());
-  }
-}
-
-void DaeBuilder::set_y(const std::vector<std::string>& name) {
-  try {
-    (*this)->y_ = find(name);
-  } catch (std::exception& e) {
-    THROW_ERROR("set_y", e.what());
-  }
-}
-
-void DaeBuilder::clear_in(const std::string& v) {
-  try {
-    (*this)->clear_in(v);
-  } catch (std::exception& e) {
-    THROW_ERROR("clear_in", e.what());
+    THROW_ERROR("set_all", e.what());
   }
 }
 
@@ -798,7 +795,7 @@ void DaeBuilder::gather_fun(casadi_int max_depth) {
     // Get a function corresponding to all equations (no inputs)
     Function all_eq = (*this)->gather_eq();
     // Gather all functions
-    std::vector<Function> allfun = all_eq.find(max_depth);
+    std::vector<Function> allfun = all_eq.find_functions(max_depth);
     // Add to list of functions
     for (const Function& f : allfun) {
       if (has_fun(f.name())) {

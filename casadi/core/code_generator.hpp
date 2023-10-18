@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -108,7 +108,9 @@ namespace casadi {
         \identifier{rz} */
     std::string constant(const std::vector<casadi_int>& v);
 
-    /** \brief Represent an array constant; adding it when new */
+    /** \brief Represent an array constant; adding it when new
+
+        \identifier{255} */
     std::string constant(const std::vector<int>& v) {
         return constant(vector_static_cast<casadi_int>(v));
     }
@@ -460,8 +462,10 @@ namespace casadi {
     std::string norm_inf(casadi_int n, const std::string& x);
 
     /** 
+
      * \brief norm_2
-    */
+
+                \identifier{256} */
     std::string norm_2(casadi_int n, const std::string& x);
 
     /** \brief max_viol
@@ -707,6 +711,11 @@ namespace casadi {
                          const std::string& res, std::size_t res_off, const Sparsity& sp_res,
                          const std::string& w);
 
+    /** \brief FMU helper functions
+
+        \identifier{257} */
+    static std::string fmu_helpers(const std::string& modelname);
+
     /** \brief Printf
 
         \identifier{u5} */
@@ -734,13 +743,22 @@ namespace casadi {
     std::string cache_check(const std::string& key, const std::string& cache,
         const std::string& loc, casadi_int stride, casadi_int sz, casadi_int key_sz,
         const std::string& val);
+
+    /// Current CasADi version as string
+    static std::string casadi_version();
+
+    /// Print file header
+    static void file_open(std::ofstream& f, const std::string& name, bool cpp);
+
+    /// Print file header
+    static void file_close(std::ofstream& f, bool cpp);
+
+    /** \brief Get number of temporary variables needed for all functions
+
+        \identifier{258} */
+    void sz_work(size_t& sz_arg, size_t& sz_res, size_t& sz_iw, size_t& sz_w) const;
+
   private:
-
-    /// Print file header
-    void file_open(std::ofstream& f, const std::string& name) const;
-
-    /// Print file header
-    void file_close(std::ofstream& f) const;
 
     // Generate casadi_real definition
     void generate_casadi_real(std::ostream &s) const;

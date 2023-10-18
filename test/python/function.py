@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -1778,6 +1778,30 @@ class Functiontests(casadiTestCase):
     code= c.dump()
 
     self.assertTrue("ffff_acc4_acc4_acc4" in code)
+    
+    
+  def test_codegen_with_jac_sparsity(self):
+  
+    if not args.run_slow: return
+    x = MX.sym("x",3)
+    y = MX.sym("y",3,3)
+    f = Function("f",[x,y],[x**3,mtimes(y,x)])
+    c = CodeGenerator('me')
+    c.add(f, True)
+    
+    fJ = f.jacobian()
+    
+    DM.rng(0)
+    x0 = DM.rand(x.sparsity())
+    y0 = DM.rand(y.sparsity())
+    [F,_] = self.check_codegen(f,inputs=[x0,y0],with_jac_sparsity=True,external_opts={"enable_fd":True})
+    FJ = F.jacobian()
+    for i in range(fJ.n_out()):
+        self.assertEqual(fJ.sparsity_out(i),FJ.sparsity_out(i))
+    [F,_] = self.check_codegen(f,inputs=[x0,y0],with_jac_sparsity=False,external_opts={"enable_fd":True})
+    FJ = F.jacobian()
+    for i in range(fJ.n_out()):
+        self.assertTrue(FJ.sparsity_out(i).is_dense())
 
   def test_2d_linear_multiout(self):
     np.random.seed(0)
@@ -1990,7 +2014,7 @@ class Functiontests(casadiTestCase):
       x = SX.sym("x")
       p = SX.sym("p")
 
-      f = Function('f',[x],[p])
+      f = Function('f',[x],[p], {"allow_free":True})
 
       #SXFunction with free parameters
       pickle.loads(pickle.dumps(f))
@@ -2041,7 +2065,7 @@ class Functiontests(casadiTestCase):
     f = Function('f',[x],[],["x"],[])
     self.assertTrue("(x)->()" in str(f))
 
-    f = Function('f',[],[x],[],["y"])
+    f = Function('f',[],[x],[],["y"], {"allow_free": True})
     self.assertTrue("()->(y)" in str(f))
 
     f = Function('f',[x],[x**2],["x"],["y"])
@@ -2159,7 +2183,7 @@ class Functiontests(casadiTestCase):
     x = MX.sym("x")
     p = MX.sym("p")
     J = Function("jac_Q", [x, p, MX(1,1), MX(1,1)], [x*pi, 1, 1, 1],
-        ['x', 'p', 'out_r', 'out_s'], ['jac_r_x', 'jac_r_p', 'jac_r_s', 'jac_r_s'])
+        ['x', 'p', 'out_r', 'out_s'], ['jac_r_x', 'jac_r_p', 'jac_s_x', 'jac_s_p'])
 
     f = Function('Q', [x, p], [x**2, 2*x*p], ['x', 'p'], ['r', 's'],
             dict(custom_jacobian = J, jac_penalty = 0))
@@ -2440,7 +2464,7 @@ class Functiontests(casadiTestCase):
   def test_map_exception(self):
     x = MX.sym("x",4)
     y = MX.sym("y",4)
-    f = Function("f",[x],[x+y])
+    f = Function("f",[x],[x+y],{"allow_free":True})
 
     if "CASADI_WITH_THREAD" in CasadiMeta.compiler_flags():
       message = "Evaluation failed"
@@ -2450,7 +2474,32 @@ class Functiontests(casadiTestCase):
     with self.assertInException(message):
       F = f.map(4,"thread",2)
       F(3)
-
+      
+  def test_DM_arg(self):
+    f = Function('f',[DM(0,1)],[])
+    print(f)
+    f = Function('f',[DM(0,1),SX.sym("x")],[])
+    print(f)
+    f = Function('f',[DM(0,1),MX.sym("x")],[])
+    print(f)
+    self.assertTrue(isinstance(vertcat(),DM))
+    self.assertEqual(vertcat().shape,(0,1))
+    self.assertTrue(isinstance(horzcat(),DM))
+    self.assertEqual(horzcat().shape,(1,0))
+    self.assertTrue(isinstance(veccat(),DM))
+    self.assertEqual(veccat().shape,(0,1))
+    self.assertTrue(isinstance(diagcat(),DM))
+    self.assertEqual(diagcat().shape,(0,0))
+    self.assertTrue(isinstance(vcat([]),DM))
+    self.assertEqual(vcat([]).shape,(0,1))
+    self.assertTrue(isinstance(hcat([]),DM))
+    self.assertEqual(hcat([]).shape,(1,0))
+    self.assertTrue(isinstance(vvcat([]),DM))
+    self.assertEqual(vvcat([]).shape,(0,1))
+    self.assertTrue(isinstance(dcat([]),DM))
+    self.assertEqual(dcat([]).shape,(0,0))
+    
+    
   def test_nondiff(self):
 
     for X in [SX,MX]:
@@ -2471,7 +2520,7 @@ class Functiontests(casadiTestCase):
 
       for ff in [F.forward(1).forward(1),F.forward(1).reverse(1),F.reverse(1).forward(1),F.reverse(1).reverse(1)]:
         s = str(ff)
-        self.assertTrue("y" not in s.replace("_y[2x2,0nz]","foo")[len("fwd1_adj1_F:(x[2x2],y[2x2]"):])
+        self.assertTrue("y" not in s.replace("_y[2x2,0nz]","foo")[len("fwd1_adj1_F:(in_in_x[2x2],in_in_y[2x2]"):])
 
 
       ye = X(2,2);
@@ -2546,6 +2595,9 @@ class Functiontests(casadiTestCase):
     print("J_ref",J_ref,J_ref(*inputs))
     self.checkfunction(J,J_ref,inputs=inputs,digits=8,digits_sens=1,evals=1)
 
+
+  def test_issue3079(self):  
+    interp1d([1,2,3], MX([4,5,6]), [1.1], 'linear')
 
   def test_functionbuffer(self):
     A_ = np.random.random((4,4))
@@ -2622,8 +2674,8 @@ class Functiontests(casadiTestCase):
   def test_codegen_with_mem(self):
     x = MX.sym("x")
     f = Function("F",[x],[3*x])
-    self.check_codegen(f,inputs=[1],main=True,opts={"with_mem":True},definitions=["inline=''"])
-    self.check_codegen(f,inputs=[1],main=True,opts={"with_mem":True,"with_header":True},definitions=["inline=''"])
+    self.check_codegen(f,inputs=[1],main=True,opts={"with_mem":True},definitions=["inline=\"\""])
+    self.check_codegen(f,inputs=[1],main=True,opts={"with_mem":True,"with_header":True},definitions=["inline=\"\""])
 
   def test_codegen_scalars_bug(self):
     x = MX.sym("x")
@@ -2696,8 +2748,9 @@ class Functiontests(casadiTestCase):
 
       f = None
       g = None
-      with self.assertInException("No such file"):
-        g = Function.load('f.casadi')
+      if os.name!='nt': # Workaround for known bug #3039
+        with self.assertInException("No such file"):
+          g = Function.load('f.casadi')
 
 
     for case in test_cases("embed"):
@@ -2759,7 +2812,11 @@ class Functiontests(casadiTestCase):
     c = conic("conic","osqp",{"a":Sparsity.dense(1,2),"h":Sparsity.dense(2,2)},{"print_problem":True,"osqp.verbose":False})
     inputs = {"h": DM([[1,0.2],[0.2,1]]),"g":vertcat(1,2),"a":horzcat(1,1),"lba":-1,"uba":1}
     inputs = c.convert_in(inputs)
-    self.check_codegen(c,inputs=inputs,main=True,std="c99",extra_options=["-Wno-endif-labels","-Wno-unused-variable"],extralibs=["osqp"])
+    extra_options = ["-Wno-endif-labels","-Wno-unused-variable"]
+    # No extra options on windows
+    if os.name == 'nt':
+      extra_options = []
+    self.check_codegen(c,inputs=inputs,main=True,std="c99",extra_options=extra_options,extralibs=["osqp"])
 
   @requires_conic('osqp')
   def test_memful_external(self):
@@ -2767,7 +2824,11 @@ class Functiontests(casadiTestCase):
     c = conic("conic","osqp",{"a":Sparsity.dense(1,2),"h":Sparsity.dense(2,2)},{"print_problem":True,"osqp.verbose":False})
     inputs = {"h": DM([[1,0.2],[0.2,1]]),"g":vertcat(1,2),"a":horzcat(1,1),"lba":-1,"uba":1}
     inputs = c.convert_in(inputs)
-    F,lib = self.check_codegen(c,inputs=inputs,std="c99",extra_options=["-Wno-endif-labels","-Wno-unused-variable"],extralibs=["osqp"])
+    extra_options = ["-Wno-endif-labels","-Wno-unused-variable"]
+    # No extra options on windows
+    if os.name == 'nt':
+      extra_options = []
+    F,lib = self.check_codegen(c,inputs=inputs,std="c99",extra_options=extra_options,extralibs=["osqp"])
     F = F.wrap()
     print("memful_external")
     self.check_codegen(F,inputs=inputs,main=True,extralibs=[lib])
@@ -2783,8 +2844,8 @@ class Functiontests(casadiTestCase):
         self.assertFalse(w.is_zero())
         res = cse(w)
         self.assertTrue(res.is_zero())
-        f1 = Function('f',[x,y],[w],{"cse":False})
-        f2 = Function('f',[x,y],[w],{"cse":True})
+        f1 = Function('f',[x,y,p],[w],{"cse":False})
+        f2 = Function('f',[x,y,p],[w],{"cse":True})
         self.assertTrue(f1.n_instructions()>3)
         self.assertTrue(f2.n_instructions()<=3)
 
@@ -2998,6 +3059,33 @@ class Functiontests(casadiTestCase):
                 f,f_normal,f_ref = [fe.factory('f',in_labels,out_labels) for fe in [f,f_normal,f_ref]]
             
         
+  def test_no_hess2(self):
+    y = MX.sym("y",2)
+
+    f = Function("foo",[y],[vertcat(sin(y[0]*y[1]),cos(y[0]*y[1]))],{"never_inline":True,"print_out":True})
+
+
+    opti = Opti()
+
+    x = opti.variable(2)
+
+    opti.subject_to(no_hess(f(x**2))>=0)
+
+    opti.minimize(sumsqr(x-2))
+
+    opti.solver("sqpmethod")
+
+    F = opti.to_function("F",[x],[x])
+    F.generate('F.c')
+    with open('F.c','r') as inp:
+        code = inp.read()
+    for m in re.findall(r"\w+FS",code):
+        self.assertTrue(len(m.split("_"))<=2)
+    for m in re.findall(r"\w+foo",code):
+        pass
+        # bug 3019
+        #self.assertTrue(len(m.split("_"))<=2)
+
    
 if __name__ == '__main__':
     unittest.main()

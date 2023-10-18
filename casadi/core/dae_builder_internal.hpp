@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@
 namespace casadi {
 
 // Forward declarations
-class XmlNode;
+struct XmlNode;
 
 /// Variable type (FMI 2)
 enum class TypeFmi2 {REAL, INTEGER, BOOLEAN, STRING, ENUM, NUMEL};
@@ -125,10 +125,10 @@ struct CASADI_EXPORT Variable {
   bool dependency;
 
   /// Dependencies
-  std::vector<casadi_int> dependencies;
+  mutable std::vector<casadi_int> dependencies;
 
   /// Dependencies
-  std::vector<DependenciesKind> dependenciesKind;
+  mutable std::vector<DependenciesKind> dependenciesKind;
 
   /// Variable expression
   MX v;
@@ -165,7 +165,7 @@ struct CASADI_EXPORT Variable {
 /// Internal class for DaeBuilder, see comments on the public class.
 class CASADI_EXPORT DaeBuilderInternal : public SharedObjectInternal {
   friend class DaeBuilder;
-  friend class Fmu;
+  friend struct Fmu;
   friend class FmuFunction;
 
  public:
@@ -205,17 +205,17 @@ class CASADI_EXPORT DaeBuilderInternal : public SharedObjectInternal {
   /// Sort algebraic variables
   void sort_z(const std::vector<std::string>& z_order);
 
-  /// Input indices (mutable)
+  /// Classified variable indices (mutable)
   std::vector<size_t>& ind_in(const std::string& v);
 
-  /// Input indices (immutable)
+  /// Classified variable indices (immutable)
   const std::vector<size_t>& ind_in(const std::string& v) const;
 
-  // Set all algebraic variables
-  void set_z(const std::vector<std::string>& name, const std::vector<std::string>& alg);
+  /// Clear all variables of a class
+  void clear_all(const std::string& v);
 
-  /// Clear input variable
-  void clear_in(const std::string& v);
+  /// Set all variables of a type
+  void set_all(const std::string& v, const std::vector<std::string>& name);
 
   /// Prune unused controls
   void prune(bool prune_p, bool prune_u);
@@ -234,15 +234,6 @@ class CASADI_EXPORT DaeBuilderInternal : public SharedObjectInternal {
   /// Import existing problem from FMI/XML
   void load_fmi_description(const std::string& filename);
 
-  /// Generate FMU XML file
-  XmlNode generate_model_description() const;
-
-  /// Generate FMU ModelVariables
-  XmlNode generate_model_variables() const;
-
-  /// Generate FMU ModelStructure
-  XmlNode generate_model_structure() const;
-
   /// Get current date and time in the ISO 8601 format
   static std::string iso_8601_time();
 
@@ -250,7 +241,31 @@ class CASADI_EXPORT DaeBuilderInternal : public SharedObjectInternal {
   static std::string generate_guid();
 
   /// Export instance into an FMU (experimental)
-  void export_fmu(const std::string& file_prefix, const Dict& opts);
+  std::vector<std::string> export_fmu(const Dict& opts) const;
+
+  /// Generate FMU wrapper file (fmi3Functions.c)
+  std::string generate_wrapper(const std::string& guid, const CodeGenerator& gen) const;
+
+  /// Generate buildDescription.xml
+  std::string generate_build_description(const std::vector<std::string>& cfiles) const;
+
+  /// Generate modelDescription.xml
+  std::string generate_model_description(const std::string& guid) const;
+
+  /// Generate FMU ModelVariables
+  XmlNode generate_model_variables() const;
+
+  /// Generate FMU ModelStructure
+  XmlNode generate_model_structure() const;
+
+  /// Update model variable dependencies
+  void update_dependencies() const;
+
+  ///@{
+  /// Helper function: generate constants
+  static std::string generate(const std::vector<size_t>& v);
+  static std::string generate(const std::vector<double>& v);
+  ///@}
 
   // Input convension in codegen
   enum DaeBuilderInternalIn {
@@ -346,6 +361,12 @@ class CASADI_EXPORT DaeBuilderInternal : public SharedObjectInternal {
 
   /// Length of variables array
   size_t n_variables() const {return variables_.size();}
+
+  /// Length of memory for all variables
+  size_t n_mem() const;
+
+  /// Start values for all variables
+  std::vector<double> start_all() const;
 
   ///@{
   /// Access a variable by index
