@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -1469,6 +1469,7 @@ namespace casadi {
 #endif // WITH_EXTRA_CHECKS
       return ret;
     } catch (KeyboardInterruptException& e) {
+      (void)e;  // unused
 #ifdef WITH_EXTRA_CHECKS
       call_depth_--;
 #endif // WITH_EXTRA_CHECKS
@@ -1734,6 +1735,17 @@ namespace casadi {
       + " but got " + str(size1_out(i)) +  "-by-" + str(size2_out(i)));
   }
 
+  void Function::assert_sparsity_out(casadi_int i, const Sparsity& sp,
+      casadi_int n, bool allow_all_zero_sparse) const {
+    // Assert shape
+    assert_size_out(i, sp.size1(), sp.size2() * n);
+    // Quick return if empty sparse
+    if (allow_all_zero_sparse && sparsity_out(i).nnz() == 0) return;
+    // Check sparsities
+    casadi_assert(sparsity_out(i).is_stacked(sp, n), "Mismatching sparsity "
+      "(but correct dimensions) for " + str(*this) + " output " + name_out(i));
+  }
+
   Function Function::
   factory(const std::string& name,
           const std::vector<std::string>& s_in,
@@ -1758,11 +1770,21 @@ namespace casadi {
     }
   }
 
+  Dict Function::cache() const {
+    try {
+      return (*this)->cache();
+    } catch(std::exception& e) {
+      THROW_ERROR("cache", e.what());
+      return {};
+    }
+  }
+
   std::vector<std::string> Function::get_function() const {
     try {
       return (*this)->get_function();
     } catch(std::exception& e) {
       THROW_ERROR("get_function", e.what());
+      return {};
     }
   }
 
@@ -1783,7 +1805,7 @@ namespace casadi {
     }
   }
 
-  std::vector<Function> Function::find(casadi_int max_depth) const {
+  std::vector<Function> Function::find_functions(casadi_int max_depth) const {
     try {
       // If negative, make largest positive number
       if (max_depth < 0) max_depth = std::numeric_limits<casadi_int>::max();
@@ -1801,7 +1823,7 @@ namespace casadi {
     }
   }
 
-  Function Function::find(casadi_int max_depth, const std::string &name) const {
+  Function Function::find_function(const std::string &name, casadi_int max_depth) const {
     try {
       // If negative, make largest positive number
       if (max_depth < 0) max_depth = std::numeric_limits<casadi_int>::max();

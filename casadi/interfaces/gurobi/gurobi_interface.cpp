@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -38,6 +38,14 @@ namespace casadi {
     plugin->version = CASADI_VERSION;
     plugin->options = &GurobiInterface::options_;
     plugin->deserialize = &GurobiInterface::deserialize;
+    #ifdef GUROBI_ADAPTOR
+      char buffer[400];
+      int ret = gurobi_adaptor_load(buffer, sizeof(buffer));
+      if (ret!=0) {
+        casadi_warning("Failed to load Gurobi adaptor: " + std::string(buffer) + ".");
+        return 1;
+      }
+    #endif
     return 0;
   }
 
@@ -150,6 +158,8 @@ namespace casadi {
     casadi_int flag = GRBloadenv(&m->env, nullptr); // no log file
     casadi_assert(!flag && m->env, "Failed to create GUROBI environment. Flag: " + str(flag)
       + ":" + GRBgeterrormsg(m->env));
+
+    m->pool_sol_nr = 0;
 
     m->sos_weights = sos_weights_;
     m->sos_beg = sos_beg_;
@@ -322,6 +332,9 @@ namespace casadi {
         casadi_assert(!flag, GRBgeterrormsg(m->env));
       }
 
+      std::vector<char> constraint_type(na_); // For each a entry: 0 absent, 1 linear
+      casadi_int npi = 0;
+
       // Add constraints
       const casadi_int *AT_colind=sm.AT.colind(), *AT_row=sm.AT.row();
       for (casadi_int i=0; i<na_; ++i) {
@@ -339,31 +352,38 @@ namespace casadi {
           numnz++;
         }
 
+        constraint_type[i] = 1;
         // Pass to model
         if (isinf(lb)) {
           if (isinf(ub)) {
+            constraint_type[i] = 0;
             // Neither upper or lower bounds, skip
           } else {
             // Only upper bound
             flag = GRBaddconstr(model, numnz, ind, val, GRB_LESS_EQUAL, ub, nullptr);
             casadi_assert(!flag, GRBgeterrormsg(m->env));
+            npi++;
           }
         } else {
           if (isinf(ub)) {
             // Only lower bound
             flag = GRBaddconstr(model, numnz, ind, val, GRB_GREATER_EQUAL, lb, nullptr);
             casadi_assert(!flag, GRBgeterrormsg(m->env));
+            npi++;
           } else if (lb==ub) {
             // Upper and lower bounds equal
             flag = GRBaddconstr(model, numnz, ind, val, GRB_EQUAL, lb, nullptr);
             casadi_assert(!flag, GRBgeterrormsg(m->env));
+            npi++;
           } else {
             // Both upper and lower bounds
             flag = GRBaddrangeconstr(model, numnz, ind, val, lb, ub, nullptr);
             casadi_assert(!flag, GRBgeterrormsg(m->env));
+            npi++;
           }
         }
       }
+      std::vector<double> pi(npi);
 
       // Add SOS constraints when applicable
       if (!m->sos_ind.empty()) {
@@ -453,7 +473,7 @@ namespace casadi {
       m->fstats.at("postprocessing").tic();
 
       int optimstatus;
-      flag = GRBgetintattr(model, GRB_INT_ATTR_STATUS, &optimstatus);
+      flag = GRBgetintattr(model, "Status", &optimstatus);
       casadi_assert(!flag, GRBgeterrormsg(m->env));
 
       if (verbose_) uout() << "return status: " << return_status_string(optimstatus) <<
@@ -467,18 +487,56 @@ namespace casadi {
 
       // Get the objective value, if requested
       if (cost) {
-        flag = GRBgetdblattr(model, GRB_DBL_ATTR_OBJVAL, cost);
+        flag = GRBgetdblattr(model, "ObjVal", cost);
         if (flag) cost[0] = casadi::nan;
       }
 
       // Get the optimal solution, if requested
       if (x) {
-        flag = GRBgetdblattrarray(model, GRB_DBL_ATTR_X, 0, nx_, x);
+        flag = GRBgetdblattrarray(model, "X", 0, nx_, x);
         if (flag) std::fill_n(x, nx_, casadi::nan);
       }
+      if (lam_x) {
+        flag = GRBgetdblattrarray(model, "RC", 0, nx_, lam_x);
+        if (!flag) casadi_scal(nx_, -1.0, lam_x);
+        if (flag) std::fill_n(lam_x, nx_, casadi::nan);
+      }
+      if (lam_a) {
+        flag = GRBgetdblattrarray(model, "Pi", 0, npi, get_ptr(pi));
+        if (flag) {
+          std::fill_n(lam_a, na_, casadi::nan);
+        } else {
+          const double * p = get_ptr(pi);
+          for (casadi_int i=0;i<na_;++i) {
+            if (constraint_type[i]==0) {
+              lam_a[i] = 0;
+            } else if (constraint_type[i]==1) {
+              lam_a[i] = -(*p++);
+            }
+          }
+        }
+      }
 
-      if (lam_x) std::fill_n(lam_x, nx_, casadi::nan);
-      if (lam_a) std::fill_n(lam_a, na_, casadi::nan);
+      // Get solutions from solution pool
+      flag = GRBgetintattr(model, GRB_INT_ATTR_SOLCOUNT, &(m->pool_sol_nr));
+      if (!flag && m->pool_sol_nr > 0) {
+        m->pool_obj_vals = std::vector<double>(m->pool_sol_nr, casadi::nan);
+        for (int idx = 0; idx < m->pool_sol_nr; ++idx) {
+          double x_pool[nx_];
+
+          flag = GRBsetintparam(GRBgetenv(model), GRB_INT_PAR_SOLUTIONNUMBER, idx);
+          if (!flag) flag = GRBgetdblattr(model, GRB_DBL_ATTR_POOLOBJVAL, &(m->pool_obj_vals[idx]));
+          if (!flag) flag = GRBgetdblattrarray(model, GRB_DBL_ATTR_XN, 0, nx_, x_pool);
+
+          if (flag) {
+            m->pool_obj_vals[idx] = casadi::nan;
+            std::fill_n(x_pool, nx_, casadi::nan);
+          }
+          
+          std::vector<double> x_pool_vec(x_pool, x_pool+nx_);
+          m->pool_solutions.push_back(x_pool_vec);
+        }
+      }
 
       // Free memory
       GRBfreemodel(model);
@@ -497,6 +555,9 @@ namespace casadi {
     Dict stats = Conic::get_stats(mem);
     auto m = static_cast<GurobiMemory*>(mem);
     stats["return_status"] = return_status_string(m->return_status);
+    stats["pool_sol_nr"] = m->pool_sol_nr;
+    stats["pool_obj_val"] = m->pool_obj_vals;
+	  stats["pool_solutions"] = m->pool_solutions;
     return stats;
   }
 

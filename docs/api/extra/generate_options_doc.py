@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -232,9 +232,17 @@ for name,meta in metadata.items():
           linec+=1
         stop = linec
         
+        target = lines[start-1]
+        if name.split("::")[1] not in target:
+            continue
         optionsdict = "".join(lines[start:stop])
 
-        results = parse_options_group_collection.parseString(optionsdict)
+        try:
+            results = parse_options_group_collection.parseString(optionsdict)
+        except Exception as e:
+            print("parse_options_group_collection",parse_options_group_collection)
+            print("optionsdict",optionsdict)
+            raise e
 
         for optiongroup in results:
           if isinstance(optiongroup,str):
@@ -336,14 +344,26 @@ for name,meta in sorted(metadata.items()):
   if not('options' in meta):
     meta['options'] = {}
 
-  optionproviders = [meta['options']]
-  for a in meta['optionproviders']:
+  # Recursive retrieve all options from optionproviders
+  optionproviders_todo = [name]
+  optionproviders = []
+
+  while optionproviders_todo:
+      e = optionproviders_todo.pop(0)
+      optionproviders.append(e)
+
+      if e in metadata:
+          additions = [x for x in metadata[e]["optionproviders"] if x not in optionproviders and x not in optionproviders_todo]
+          optionproviders_todo.extend(additions)
+  
+  optionset = []
+  for a in optionproviders:
     if a in metadata and 'options' in metadata[a]:
-      optionproviders.append(metadata[a]['options'])
+      optionset.append(metadata[a]['options'])
   
   alloptions = {}
   
-  for optionprovider in reversed(optionproviders):
+  for optionprovider in reversed(optionset):
       update_overwrite(alloptions,optionprovider)
       
   myoptionskeys = alloptions.keys()
@@ -391,7 +411,6 @@ for name,meta in sorted(metadata.items()):
       f.write( "*/\n")
     
     t = name
-    print("test", name, myoptionskeys)
     f.write("/** \\addtogroup general_%s\n\\n\n\\par\n" % t.replace("casadi::","") )
     f.write("<a name='options'></a><table>\n")
     f.write("<caption>List of available options</caption>\n")

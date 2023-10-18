@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -315,8 +315,16 @@ namespace casadi {
   void XFunction<DerivedType, MatType, NodeType>::init(const Dict& opts) {
     // Call the init function of the base class
     FunctionInternal::init(opts);
-    if (verbose_) casadi_message(name_ + "::init");
 
+    bool allow_duplicate_io_names = false;
+        // Read options
+    for (auto&& op : opts) {
+      if (op.first=="allow_duplicate_io_names") {
+        allow_duplicate_io_names = op.second;
+      }
+    }
+
+    if (verbose_) casadi_message(name_ + "::init");
     // Make sure that inputs are symbolic
     for (casadi_int i=0; i<n_in_; ++i) {
       if (in_.at(i).nnz()>0 && !in_.at(i).is_valid_input()) {
@@ -324,7 +332,6 @@ namespace casadi {
                      "\nArgument " + str(i) + "(" + name_in_[i] + ") is not symbolic.");
       }
     }
-
     // Check for duplicate entries among the input expressions
     bool has_duplicates = false;
     for (auto&& i : in_) {
@@ -333,10 +340,9 @@ namespace casadi {
         break;
       }
     }
-
     // Reset temporaries
     for (auto&& i : in_) i.reset_input();
-
+    // Generate error
     if (has_duplicates) {
       std::stringstream s;
       s << "The input expressions are not independent:\n";
@@ -344,6 +350,36 @@ namespace casadi {
         s << iind << ": " << in_[iind] << "\n";
       }
       casadi_error(s.str());
+    }
+
+    if (!allow_duplicate_io_names) {
+      // Collect hashes for all inputs and outputs
+      std::hash<std::string> hasher;
+      std::vector<size_t> iohash;
+      iohash.reserve(name_in_.size() + name_out_.size());
+      for (const std::string& s : name_in_) iohash.push_back(hasher(s));
+      for (const std::string& s : name_out_) iohash.push_back(hasher(s));
+      std::sort(iohash.begin(), iohash.end());
+      // Look for duplicates
+      size_t prev = -1;
+      for (size_t h : iohash) {
+        if (h == prev) {
+          // Hash duplicate found, collect strings
+          std::vector<std::string> io_names;
+          io_names.reserve(iohash.size());
+          for (const std::string& s : name_in_) io_names.push_back(s);
+          for (const std::string& s : name_out_) io_names.push_back(s);
+          std::sort(io_names.begin(), io_names.end());
+          // Look for duplicates
+          std::string prev;
+          for (std::string h : io_names) {
+            if (h == prev) casadi_error("Duplicate IO name: " + h + ". "
+              "To ignore this error, set 'allow_duplicate_io_names' option.");
+            prev = h;
+          }
+        }
+        prev = h;
+      }
     }
   }
 
@@ -799,10 +835,12 @@ namespace casadi {
       std::vector<MatType> ret_out(onames.size());
       for (casadi_int i=0; i<n_out_; ++i) {
         if (is_diff_out_[i]) {
+          // Concatenate sensitivities, correct sparsity pattern if needed
           for (casadi_int d=0; d<nfwd; ++d) v[d] = fsens[d][i];
-          ret_out.at(i) = horzcat(v);
+          ret_out.at(i) = ensure_stacked(horzcat(v), sparsity_out(i), nfwd);
         } else {
-          ret_out.at(i) = MatType(size1_out(i), size2_out(i)*nfwd);
+          // Output is non-differentable
+          ret_out.at(i) = MatType(size1_out(i), size2_out(i) * nfwd);
         }
       }
 
@@ -811,6 +849,7 @@ namespace casadi {
         options["is_diff_in"] = join(is_diff_in_, is_diff_out_, is_diff_in_);
       if (opts.find("is_diff_out")==opts.end())
         options["is_diff_out"] = is_diff_out_;
+      options["allow_duplicate_io_names"] = true;
       // Assemble function and return
       return Function(name, ret_in, ret_out, inames, onames, options);
     } catch (std::exception& e) {
@@ -847,10 +886,12 @@ namespace casadi {
       std::vector<MatType> ret_out(onames.size());
       for (casadi_int i=0; i<n_in_; ++i) {
         if (is_diff_in_[i]) {
+          // Concatenate sensitivities, correct sparsity pattern if needed
           for (casadi_int d=0; d<nadj; ++d) v[d] = asens[d][i];
-          ret_out.at(i) = horzcat(v);
+          ret_out.at(i) = ensure_stacked(horzcat(v), sparsity_in(i), nadj);
         } else {
-          ret_out.at(i) = MatType(size1_in(i), size2_in(i)*nadj);
+          // Input is non-differentable
+          ret_out.at(i) = MatType(size1_in(i), size2_in(i) * nadj);
         }
       }
 
@@ -860,6 +901,7 @@ namespace casadi {
       if (opts.find("is_diff_out")==opts.end())
         options["is_diff_out"] = is_diff_in_;
 
+      options["allow_duplicate_io_names"] = true;
       // Assemble function and return
       return Function(name, ret_in, ret_out, inames, onames, options);
     } catch (std::exception& e) {
@@ -875,6 +917,8 @@ namespace casadi {
                  const Dict& opts) const {
     try {
       Dict tmp_options = generate_options("tmp");
+      tmp_options["allow_free"] = true;
+      tmp_options["allow_duplicate_io_names"] = true;
       // Temporary single-input, single-output function FIXME(@jaeandersson)
       Function tmp("flattened_" + name, {veccat(in_)}, {veccat(out_)}, tmp_options);
 
@@ -908,13 +952,11 @@ namespace casadi {
       }
 
       Dict options = opts;
-      if (opts.find("is_diff_in")==opts.end())
-        options["is_diff_in"] = join(is_diff_in_, is_diff_out_);
-      if (opts.find("is_diff_out")==opts.end())
-        options["is_diff_out"] = is_diff_out_;
+      options["allow_free"] = true;
+      options["allow_duplicate_io_names"] = true;
 
       // Assemble function and return
-      return Function(name, ret_in, ret_out, inames, onames, opts);
+      return Function(name, ret_in, ret_out, inames, onames, options);
     } catch (std::exception& e) {
       CASADI_THROW_ERROR("get_jacobian", e.what());
     }
@@ -1105,6 +1147,7 @@ namespace casadi {
 
     Dict final_options;
     extract_from_dict_inplace(f_options, "final_options", final_options);
+    final_options["allow_duplicate_io_names"] = true;
 
     // Create an expression factory
     Factory<MatType> f;
@@ -1146,7 +1189,10 @@ namespace casadi {
     for (const std::string& s : s_out) ret_out.push_back(f.get_output(s));
 
     // Create function and return
-    Function ret(name, ret_in, ret_out, ret_iname, ret_oname, final_options);
+    Dict final_options_allow_free = final_options;
+    final_options_allow_free["allow_free"] = true;
+    final_options_allow_free["allow_duplicate_io_names"] = true;
+    Function ret(name, ret_in, ret_out, ret_iname, ret_oname, final_options_allow_free);
     if (ret.has_free()) {
       // Substitute free variables with zeros
       // We assume that the free variables are caused by false positive dependencies
@@ -1183,7 +1229,8 @@ namespace casadi {
 
   template<typename MatType>
   Sparsity _jacobian_sparsity(const MatType &expr, const MatType &var) {
-    Function f = Function("tmp_jacobian_sparsity", {var}, {expr});
+    Dict opts{{"max_io", 0}, {"allow_free", true}};
+    Function f = Function("tmp_jacobian_sparsity", {var}, {expr}, opts);
     return f.jac_sparsity(0, 0, false);
   }
 
@@ -1206,7 +1253,8 @@ namespace casadi {
       e = jtimes(e, var, v);
     }
 
-    Function f = Function("tmp_which_depends", {var}, {e});
+    Dict opts{{"max_io", 0}, {"allow_free", true}};
+    Function f = Function("tmp_which_depends", {var}, {e}, opts);
     // Propagate sparsities backwards seeding all outputs
     std::vector<bvec_t> seed(tr? f.nnz_in(0) : f.nnz_out(0), 1);
     std::vector<bvec_t> sens(tr? f.nnz_out(0) : f.nnz_in(0), 0);

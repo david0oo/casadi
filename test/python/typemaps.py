@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -797,6 +797,15 @@ class typemaptests(casadiTestCase):
 
     self.assertEqual(int(b),10**15)
   """
+  
+  def test_issue_3214(self):
+    import numpy as np
+    import casadi as ca
+    with self.assertRaises(RuntimeError):
+        print(np.array([-1.0, 0.0]) - ca.DM([[0.1, 0.0]]))
+        
+    r = np.array([-1.0, 0.0]) - ca.DM([0.1, 0.0])
+    self.checkarray(r,DM([-1.1,0]))
 
   def test_buglonglong(self):
     x = SX.sym("x")

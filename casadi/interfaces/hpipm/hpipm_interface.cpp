@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -703,7 +703,7 @@ namespace casadi {
 
     m->d.prob = &p_;
     m->d.qp = &m->d_qp;
-    casadi_hpipm_init(&m->d, &arg, &res, &iw, &w);
+    casadi_hpipm_set_work(&m->d, &arg, &res, &iw, &w);
   }
 
   int HpipmInterface::
@@ -808,7 +808,7 @@ namespace casadi {
     // Setup data structure (corresponds to set_work)
     g << "d.prob = &p;\n";
     g << "d.qp = &d_qp;\n";
-    g << "casadi_hpipm_init(&d, &arg, &res, &iw, &w);\n";
+    g << "casadi_hpipm_set_work(&d, &arg, &res, &iw, &w);\n";
 
     g << "casadi_hpipm_solve(&d, arg, res, iw, w);\n";
 

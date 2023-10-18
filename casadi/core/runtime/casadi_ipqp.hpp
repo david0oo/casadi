@@ -1,4 +1,22 @@
-// NOLINT(legal/copyright)
+//
+//    MIT No Attribution
+//
+//    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl, KU Leuven.
+//
+//    Permission is hereby granted, free of charge, to any person obtaining a copy of this
+//    software and associated documentation files (the "Software"), to deal in the Software
+//    without restriction, including without limitation the rights to use, copy, modify,
+//    merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+//    permit persons to whom the Software is furnished to do so.
+//
+//    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+//    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+//    PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+//    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+//    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+//    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
 
 // C-REPLACE "fmin" "casadi_fmin"
 // C-REPLACE "fmax" "casadi_fmax"
@@ -790,15 +808,13 @@ void casadi_ipqp_solution(casadi_ipqp_data<T1>* d, T1* x, T1* lam_x, T1* lam_a) 
   casadi_copy(d->lam + p->nx, p->na, lam_a);
 }
 
-// The following routines require stdio
-#ifndef CASADI_PRINTF
-
 // SYMBOL "ipqp_print_header"
 template<typename T1>
 int casadi_ipqp_print_header(casadi_ipqp_data<T1>* d, char* buf, size_t buf_sz) {
+#ifdef CASADI_SNPRINTF
   int flag;
   // Print to string
-  flag = snprintf(buf, buf_sz, "%5s %9s %9s %5s %9s %5s "
+  flag = CASADI_SNPRINTF(buf, buf_sz, "%5s %9s %9s %5s %9s %5s "
           "%9s %5s %9s %4s",
           "Iter", "mu", "|pr|", "con", "|du|", "var", "|co|", "con",
           "last_tau", "Note");
@@ -807,6 +823,9 @@ int casadi_ipqp_print_header(casadi_ipqp_data<T1>* d, char* buf, size_t buf_sz) 
     d->status = IPQP_PROGRESS_ERROR;
     return 1;
   }
+#else
+  if (buf_sz) buf[0] = '\0';
+#endif
   // Successful return
   return 0;
 }
@@ -814,9 +833,10 @@ int casadi_ipqp_print_header(casadi_ipqp_data<T1>* d, char* buf, size_t buf_sz) 
 // SYMBOL "ipqp_print_iteration"
 template<typename T1>
 int casadi_ipqp_print_iteration(casadi_ipqp_data<T1>* d, char* buf, int buf_sz) {
+#ifdef CASADI_SNPRINTF
   int flag;
   // Print iteration data without note to string
-  flag = snprintf(buf, buf_sz,
+  flag = CASADI_SNPRINTF(buf, buf_sz,
     "%5d %9.2g %9.2g %5d %9.2g %5d %9.2g %5d %9.2g  ",
     static_cast<int>(d->iter), d->mu,
     d->pr, static_cast<int>(d->ipr),
@@ -833,15 +853,16 @@ int casadi_ipqp_print_iteration(casadi_ipqp_data<T1>* d, char* buf, int buf_sz) 
   buf_sz -= flag;
   // Print iteration note, if any
   if (d->msg) {
-    flag = snprintf(buf, buf_sz, "%s", d->msg);
+    flag = CASADI_SNPRINTF(buf, buf_sz, "%s", d->msg);
     // Check if error
     if (flag < 0) {
       d->status = IPQP_PROGRESS_ERROR;
       return 1;
     }
   }
+#else
+  if (buf_sz) buf[0] = '\0';
+#endif
   // Successful return
   return 0;
 }
-
-#endif  // CASADI_PRINTF

@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -1191,6 +1191,10 @@ namespace casadi {
     /// Assert that an output dimension is equal so some given value
     void assert_size_out(casadi_int i, casadi_int nrow, casadi_int ncol) const;
 
+    /// Assert that an output sparsity is a multiple of some given sparsity
+    void assert_sparsity_out(casadi_int i, const Sparsity& sp,
+        casadi_int n = 1, bool allow_all_zero_sparse = true) const;
+
     /// Checkout a memory object
     casadi_int checkout() const;
 
@@ -1201,6 +1205,11 @@ namespace casadi {
     /// Get memory object
     void* memory(int ind) const;
 #endif // SWIG
+
+    /** \brief Get all functions in the cache
+
+        \identifier{26i} */
+    Dict cache() const;
 
     /** \brief Get a list of all functions
 
@@ -1222,15 +1231,15 @@ namespace casadi {
       * \param[in] max_depth  Maximum depth - a negative number indicates no maximum
 
         \identifier{1y6} */
-    std::vector<Function> find(casadi_int max_depth = -1) const;
+    std::vector<Function> find_functions(casadi_int max_depth = -1) const;
 
     /** \brief  Get a specific function embedded in the expression graphs
 
-      * \param[in] max_depth  Maximum depth - a negative number indicates no maximum
       * \param[in] name  Name of function needed
+      * \param[in] max_depth  Maximum depth - a negative number indicates no maximum
 
         \identifier{1y7} */
-    Function find(casadi_int max_depth, const std::string &name) const;
+    Function find_function(const std::string &name, casadi_int max_depth=-1) const;
 
     /** Obtain information about function */
     Dict info() const;

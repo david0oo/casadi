@@ -6,6 +6,10 @@ if(WITH_SUNDIALS)
   add_subdirectory(sundials)
 endif()
 
+if(WITH_SLEQP)
+  add_subdirectory(sleqp)
+endif()
+
 if(WITH_IPOPT)
   add_subdirectory(ipopt)
 endif()
@@ -111,6 +115,10 @@ endif()
 
 if(WITH_UNO)
   add_subdirectory(uno)
+endif()
+
+if(WITH_ALPAQA)
+  add_subdirectory(alpaqa)
 endif()
 
 if(WITH_LINT)

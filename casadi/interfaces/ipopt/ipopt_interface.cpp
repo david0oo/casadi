@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -409,8 +409,10 @@ namespace casadi {
       return "Maximum_CpuTime_Exceeded";
     case Feasible_Point_Found:
       return "Feasible_Point_Found";
+#if (IPOPT_VERSION_MAJOR > 3) || (IPOPT_VERSION_MAJOR == 3 && IPOPT_VERSION_MINOR >= 14)
     case Maximum_WallTime_Exceeded:
       return "Maximum_WallTime_Exceeded";
+#endif
     }
     return "Unknown";
   }
@@ -445,8 +447,11 @@ namespace casadi {
     m->success = status==Solve_Succeeded || status==Solved_To_Acceptable_Level
                  || status==Feasible_Point_Found;
     if (status==Maximum_Iterations_Exceeded ||
-        status==Maximum_WallTime_Exceeded ||
         status==Maximum_CpuTime_Exceeded) m->unified_return_status = SOLVER_RET_LIMITED;
+
+#if (IPOPT_VERSION_MAJOR > 3) || (IPOPT_VERSION_MAJOR == 3 && IPOPT_VERSION_MINOR >= 14)
+    if (status==Maximum_WallTime_Exceeded) m->unified_return_status = SOLVER_RET_LIMITED;
+#endif
 
     // Save results to outputs
     casadi_copy(m->gk, ng_, d_nlp->z + nx_);
@@ -544,7 +549,7 @@ namespace casadi {
     } catch(KeyboardInterruptException& ex) {
       return 0;
     } catch(std::exception& ex) {
-      uerr() << "intermediate_callback: " << ex.what() << std::endl;
+      casadi_warning("intermediate_callback: " + std::string(ex.what()));
       if (iteration_callback_ignore_errors_) return 1;
       return 0;
     }

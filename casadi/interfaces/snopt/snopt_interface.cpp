@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -502,7 +502,10 @@ std::map<int, std::string> SnoptInterface::secondary_status_ =
           fCon[k] = m->gk[k];
         }
       }
-
+    } catch(KeyboardInterruptException& ex) {
+      casadi_warning("KeyboardInterruptException");
+      *mode = -2;
+      return;
     } catch(std::exception& ex) {
       uerr() << "eval_nlp failed: " << ex.what() << std::endl;
       *mode = -1;  // Reduce step size - we've got problems

@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -165,6 +165,17 @@ class casadiTestCase(unittest.TestCase):
   @classmethod
   def tearDownClass(cls):
     print("STATUS_RAN_ALL_TESTS")
+
+  @contextmanager
+  def assertInAnyOutput(self,s):
+    e = ""
+    with capture_stdout() as result:
+        try:
+          yield
+        except Exception as err:
+          e = str(err)
+    print(result[0])
+    self.assertTrue(s in e or s in result[0] or s in result[1])
 
   @contextmanager
   def assertInException(self,s):
@@ -507,8 +518,8 @@ class casadiTestCase(unittest.TestCase):
         else:
           return ret.sparsity()
 
-      #spmods = [lambda x: x , remove_first, remove_last]
-      spmods = [lambda x: x]
+      spmods = [lambda x: x , remove_first, remove_last]
+      #spmods = [lambda x: x]
       #spmods = [lambda x: x , remove_first]
 
       sym = MX.sym
@@ -596,14 +607,16 @@ class casadiTestCase(unittest.TestCase):
   def check_sparsity(self, a,b):
     self.assertTrue(a==b, msg=str(a) + " <-> " + str(b))
 
-  def check_codegen(self,F,inputs=None, opts=None,std="c89",extralibs="",check_serialize=False,extra_options=None,main=False,definitions=None):
+  def check_codegen(self,F,inputs=None, opts=None,std="c89",extralibs="",check_serialize=False,extra_options=None,main=False,definitions=None,with_jac_sparsity=False,external_opts=None):
 
     if args.run_slow:
       import hashlib
       name = "codegen_%s" % (hashlib.md5(("%f" % np.random.random()+str(F)+str(time.time())).encode()).hexdigest())
       if opts is None: opts = {}
       if main: opts["main"] = True
-      F.generate(name, opts)
+      cg = CodeGenerator(name,opts)
+      cg.add(F,with_jac_sparsity)
+      cg.generate()
       import subprocess
 
       libdir = GlobalOptions.getCasadiPath()
@@ -611,7 +624,22 @@ class casadiTestCase(unittest.TestCase):
       includedirs = [includedir,os.path.join(includedir,"highs")]
 
       if isinstance(extralibs,list):
-        extralibs = " " + " ".join([lib if "." in lib else (lib + ".lib" if os.name=='nt' else "-l"+lib) for lib in extralibs])
+        extralibs_clean = []
+        for lib in extralibs:
+            if os.name=='nt':
+                if "." in lib:
+                    if lib.endswith(".dll"):
+                        extralibs_clean.append(lib[:-4]+".lib")
+                    else:
+                        extralibs_clean.append(lib)
+                else:
+                    extralibs_clean.append(lib+".lib")
+            else:
+                if "." in lib:
+                    extralibs_clean.append(lib)
+                else:
+                    extralibs_clean.append("-l"+lib)
+        extralibs = " " + " ".join(extralibs_clean)
 
       if isinstance(extra_options,bool) or extra_options is None:
         extra_options = ""
@@ -624,24 +652,37 @@ class casadiTestCase(unittest.TestCase):
         if os.name=='nt':
           defs = " ".join(["/D"+d for d in definitions])
           commands = "cl.exe {shared} {definitions} {includedir} {name}.c {extra} /link  /libpath:{libdir}".format(shared="/LD" if shared else "",std=std,name=name,libdir=libdir,includedir=" ".join(["/I" + e for e in includedirs]),extra=extralibs + extra_options + extralibs + extra_options,definitions=defs)
-          output = "./" + name + (".dll" if shared else ".exe")
+          if shared:
+            output = "./" + name + ".dll"
+          else:
+            output = name + ".exe"
           return [commands, output]
         else:
           defs = " ".join(["-D"+d for d in definitions])
           output = "./" + name + (".so" if shared else "")
-          commands = "gcc -pedantic -std={std} -fPIC {shared} -Wall -Werror -Wextra {includedir} -Wno-unknown-pragmas -Wno-long-long -Wno-unused-parameter -O3 {definitions} {name}.c -o {name_out} -L{libdir}".format(shared="-shared" if shared else "",std=std,name=name,name_out=name+(".so" if shared else ""),libdir=libdir,includedir=" ".join(["-I" + e for e in includedirs]),definitions=defs) + (" -lm" if not shared else "") + extralibs + extra_options
+          commands = "gcc -pedantic -std={std} -fPIC {shared} -Wall -Werror -Wextra {includedir} -Wno-unknown-pragmas -Wno-long-long -Wno-unused-parameter -O3 {definitions} {name}.c -o {name_out} -L{libdir} -Wl,-rpath,{libdir} -Wl,-rpath,.".format(shared="-shared" if shared else "",std=std,name=name,name_out=name+(".so" if shared else ""),libdir=libdir,includedir=" ".join(["-I" + e for e in includedirs]),definitions=defs) + (" -lm" if not shared else "") + extralibs + extra_options
+          if sys.platform=="darwin":
+            commands+= " -Xlinker -rpath -Xlinker {libdir}".format(libdir=libdir)
+            commands+= " -Xlinker -rpath -Xlinker .".format(libdir=libdir)
           return [commands, output]
 
       [commands, libname] = get_commands(shared=True)
 
+      print("compile library",commands)
       p = subprocess.Popen(commands,shell=True).wait()
-      F2 = external(F.name(), libname)
+      if sys.platform=="darwin":
+        subprocess.run(["otool","-l",libname])
+      if external_opts is None: external_opts = {}
+      F2 = external(F.name(), libname,external_opts)
 
       if main:
         [commands, exename] = get_commands(shared=False)
-        print(commands)
+        print("here",commands)
         env = os.environ
-        env["LD_LIBRARY_PATH"] = libdir
+        if os.name=='nt':
+            env["PATH"] = env["PATH"]+";"+libdir
+        else:
+            env["LD_LIBRARY_PATH"] = libdir
         p = subprocess.Popen(commands,shell=True,env=env).wait()
         inputs_main = inputs
         if isinstance(inputs,dict):
@@ -788,6 +829,9 @@ class requires_nlpsol(object):
     self.n = n
 
   def __call__(self,c):
+    import os
+    if "SKIP_" + self.n.upper() + "_TESTS" in os.environ:
+        return None
     try:
       load_nlpsol(self.n)
       return c

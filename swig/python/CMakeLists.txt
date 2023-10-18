@@ -61,6 +61,8 @@ else()
   
   CasadiGetPythonVersionMajor(PYTHON_VERSION_MAJOR "${PYTHON_INCLUDE_PATH}")
   include_directories(${PYTHON_INCLUDE_PATH})
+  
+  
 endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
@@ -91,6 +93,10 @@ message("PYTHONFLAGS: ${CMAKE_SWIG_FLAGS} ${PYTHONFLAG}")
 if(SWIG_EXPORT)
   set(CMAKE_SWIG_OUTDIR ${CMAKE_CURRENT_SOURCE_DIR}/target${PYTHONFLAG}/extra)
   set(CMAKE_SWIG_WRAP_OUTDIR ${CMAKE_CURRENT_SOURCE_DIR}/target${PYTHONFLAG}/source/dummy)
+  
+  configure_file(setup.py.in "${PROJECT_SOURCE_DIR}/setup.py" @ONLY)
+  file(COPY requirements.txt DESTINATION ${PROJECT_SOURCE_DIR})
+  file(COPY MANIFEST.in DESTINATION ${PROJECT_SOURCE_DIR})
 endif()
 
 if(SWIG_IMPORT)
@@ -122,17 +128,14 @@ else()
   set(CASADI_PYTHON_LIBRARY_SUFFIX ${CMAKE_SHARED_MODULE_SUFFIX})
 endif()
 
-if(APPLE AND ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"))
+if(APPLE AND ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"))
   set_target_properties(_casadi PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
 endif()
 
-set(COMPILE_FLAGS "-Wno-dynamic-class-memaccess -Wno-self-assign ${MAYBE_WERROR}")
-
-
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  # Null
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+  set(COMPILE_FLAGS "-Wno-dynamic-class-memaccess -Wno-self-assign ${MAYBE_WERROR}")
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  set(COMPILE_FLAGS "${COMPILE_FLAGS} -Wno-maybe-uninitialized")
+  set(COMPILE_FLAGS "-Wno-dynamic-class-memaccess -Wno-self-assign ${MAYBE_WERROR} -Wno-maybe-uninitialized")
   if(WIN32)
     # Fix for error: '_hypot' has not been declared in 'std'
     # cfr https://github.com/tudat-team/tudatpy/commit/ea9ef90a462825a65741f89ac1776413868f52cb
@@ -143,6 +146,8 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
       set(COMPILE_FLAGS "${COMPILE_FLAGS} -DMS_WIN64")
     endif()
   endif()
+else()
+  set(COMPILE_FLAGS)
 endif()
 
 message("COMPILE_FLAGS: ${COMPILE_FLAGS}")
@@ -150,10 +155,10 @@ message("COMPILE_FLAGS: ${COMPILE_FLAGS}")
 set_target_properties(_casadi PROPERTIES COMPILE_FLAGS "${COMPILE_FLAGS}")
 
 if(WIN32) # dlls don't allow missing symbols
-  if(NOT PYTHON_LIBRARIES)
+  if(NOT PYTHON_LIBRARY)
     message(SEND_ERROR "Python libraries not found, but required." )
   endif()
-  target_link_libraries(_casadi ${PYTHON_LIBRARIES})
+  target_link_libraries(_casadi ${PYTHON_LIBRARY})
 endif()
 target_link_libraries(_casadi casadi)
 
@@ -209,16 +214,11 @@ mark_as_advanced(CASADI_PYTHON_PIP_METADATA_INSTALL)
 set(CASADI_PYTHON_PIP_METADATA_INSTALLER "cmake" CACHE STRING "Specify the string to identify the pip Installer. Default: cmake, change this if you are using another tool.")
 mark_as_advanced(CASADI_PYTHON_PIP_METADATA_INSTALLER)
 if (CASADI_PYTHON_PIP_METADATA_INSTALL)
-  if (WIN32)
-    set(NEW_LINE "\n\r")
-  else()
-    set(NEW_LINE "\n")
-  endif()
   file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/METADATA "")
-  file(APPEND ${CMAKE_CURRENT_BINARY_DIR}/METADATA "Metadata-Version: 2.1${NEW_LINE}")
-  file(APPEND ${CMAKE_CURRENT_BINARY_DIR}/METADATA "Name: casadi${NEW_LINE}")
-  file(APPEND ${CMAKE_CURRENT_BINARY_DIR}/METADATA "Version: ${CASADI_VERSION}${NEW_LINE}")
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/INSTALLER "${CASADI_PYTHON_PIP_METADATA_INSTALLER}${NEW_LINE}")
+  file(APPEND ${CMAKE_CURRENT_BINARY_DIR}/METADATA "Metadata-Version: 2.1\n")
+  file(APPEND ${CMAKE_CURRENT_BINARY_DIR}/METADATA "Name: casadi\n")
+  file(APPEND ${CMAKE_CURRENT_BINARY_DIR}/METADATA "Version: ${CASADI_VERSION}\n")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/INSTALLER "${CASADI_PYTHON_PIP_METADATA_INSTALLER}\n")
   install(
     FILES "${CMAKE_CURRENT_BINARY_DIR}/METADATA" "${CMAKE_CURRENT_BINARY_DIR}/INSTALLER"
     DESTINATION ${PYTHON_PREFIX}/casadi-${CASADI_VERSION}.dist-info
@@ -230,7 +230,7 @@ if (WITH_EXTENDING_CASADI)
   set_source_files_properties(../extending_casadi/extending_casadi.i  PROPERTIES  CPLUSPLUS ON)
   swig_add_module(extending_casadi python ../extending_casadi/extending_casadi.i)
   swig_link_libraries(extending_casadi extending_casadi)
-  if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     set_target_properties(_extending_casadi PROPERTIES COMPILE_FLAGS "-Wno-dynamic-class-memaccess -Wno-self-assign ${MAYBE_WERROR} -fno-builtin-strdup -fno-builtin-strndup")
   elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     set_target_properties(_extending_casadi PROPERTIES COMPILE_FLAGS "-Wno-dynamic-class-memaccess -Wno-self-assign -Wno-maybe-uninitialized ${MAYBE_WERROR} -fno-builtin-strdup -fno-builtin-strndup")

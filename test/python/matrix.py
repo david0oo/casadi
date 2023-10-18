@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -1268,7 +1268,16 @@ class Matrixtests(casadiTestCase):
     f = Function('f',[x],[y])
     self.assertTrue(f.sz_w()==n)
 
-    
-    
+
+  def test_horzsplit_n(self):
+    self.assertTrue(len(horzsplit_n(DM.rand(1,6),2))==2)
+    self.assertTrue(len(vertsplit_n(DM.rand(6),2))==2)
+    self.assertTrue(len(horzsplit_n(DM(0,0),2))==2)
+    self.assertTrue(len(vertsplit_n(DM(0,0),2))==2)
+    with self.assertRaises(Exception):
+       horzsplit_n(DM.rand(1,5),2)
+    with self.assertRaises(Exception):
+       vertsplit_n(DM.rand(5),2)
+       
 if __name__ == '__main__':
     unittest.main()

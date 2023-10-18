@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -549,10 +549,8 @@ namespace casadi {
     } catch(KeyboardInterruptException& ex) {
       return 0;
     } catch(std::exception& ex) {
-      if (iteration_callback_ignore_errors_) {
-        uerr() << "intermediate_callback: " << ex.what() << std::endl;
-        return 1;
-      }
+      casadi_warning("intermediate_callback: " + std::string(ex.what()));
+      if (iteration_callback_ignore_errors_) return 1;
       return 0;
     }
   }

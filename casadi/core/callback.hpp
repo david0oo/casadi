@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -108,10 +108,17 @@ namespace casadi {
     /** \brief A copy-free low level interface
      *
      * In Python, you will be passed two tuples of memoryview objects
+     * Note that only the structural nonzeros are present in the memoryview objects/buffers.
+     *
+     * Make sure to override has_eval_buffer() to indicate support for this method.
 
         \identifier{o9} */
     virtual int eval_buffer(const double **arg, const std::vector<casadi_int>& sizes_arg,
                               double **res, const std::vector<casadi_int>& sizes_res) const;
+    /** \brief Does the Callback class support a copy-free low level interface ?
+     *
+
+        \identifier{265} */
     virtual bool has_eval_buffer() const;
 
     /** \brief Get the number of inputs
