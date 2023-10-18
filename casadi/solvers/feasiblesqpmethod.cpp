@@ -218,7 +218,6 @@ namespace casadi {
     print_header_ = true;
     print_iteration_ = true;
     print_status_ = true;
-    // so_corr_ = false;
     init_feasible_ = false;
 
     // parameters and options for FP-SQP solver
@@ -476,11 +475,13 @@ namespace casadi {
 
   void Feasiblesqpmethod::set_feasiblesqpmethod_prob() {
 
+    // Sparsity of Hessian
     p_.sp_h = Hsp_;
 
+    // Sparsity of Jacobian
     p_.sp_a = Asp_;
-    // p_.merit_memsize = merit_memsize_;
-    // p_.max_iter_ls = max_iter_ls_;
+
+    //Is this the NLP problem?
     p_.nlp = &p_nlp_;
   }
 
@@ -518,6 +519,7 @@ double Feasiblesqpmethod::eval_m_k(void* mem) const {
 }
 
 double Feasiblesqpmethod::eval_tr_ratio(double val_f, double val_f_corr, double val_m_k) const {
+  uout() << "predicted reduction is here:" << -val_m_k << std::endl;
   return (val_f - val_f_corr) / (-val_m_k);
 }
 
@@ -962,10 +964,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
     // Number of SQP iterations
     m->iter_count = 0;
 
-    // Reset
-    // m->merit_ind = 0;
-    // m->sigma = 0.;    // NOTE: Move this into the main optimization loop
-    // m->reg = 0;
     int step_accepted = 0;
 
     // Default quadratic model value of objective

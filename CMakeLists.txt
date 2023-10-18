@@ -679,8 +679,10 @@ endif()
 add_feature_info(blocksqp-interface WITH_BLOCKSQP "Interface to the NLP solver blockSQP.")
 
 option(WITH_UNO "Compile the interface to UNO" ON)
+# set(BUILD_UNO_GIT_REPO "https://github.com/david0oo/Uno.git")
+# set(BUILD_UNO_VERSION "funnel_method")
 set(BUILD_UNO_GIT_REPO "https://github.com/jgillis/Uno.git")
-set(BUILD_UNO_VERSION "main")
+set(BUILD_UNO_VERSION "remove_branch")
 option(WITH_BUILD_UNO "Build UNO (BUILD_UNO_VERSION=${BUILD_UNO_VERSION}) from downloaded source (BUILD_UNO_GIT_REPO=${BUILD_UNO_GIT_REPO})." OFF)
 
 # IPOPT: A sparse interior point NLP solver with filter line-search
