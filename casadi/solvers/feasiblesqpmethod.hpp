@@ -106,6 +106,8 @@ namespace casadi {
     double eval_m_k(void* mem) const;
 
     double eval_tr_ratio(double val_f, double val_f_corr, double val_m_k) const;
+    
+    int eval_switching_condition(double current_infeasibility, double val_m_k) const;
 
     void tr_update(void* mem, double& tr_rad, double tr_ratio) const;
 
@@ -127,15 +129,15 @@ namespace casadi {
     casadi_feasiblesqpmethod_prob<double> p_;
 
     /// QP solver for the subproblems
-    Function qpsol_;
+    Function qpsol_standard_;
 
-    /// QP solver for elastic mode subproblems
-    Function qpsol_ela_;
+    /// QP solver for restoration phase
+    Function qpsol_restoration_;
 
     /// Exact Hessian?
     bool exact_hessian_;
 
-    /// Exact Hessian?
+    /// Use SQP method?
     bool use_sqp_;
 
     /// Use Anderson Acceleration
@@ -158,14 +160,6 @@ namespace casadi {
 
     /// Initialize feasible qp's
     bool init_feasible_;
-
-    /// Linesearch parameters
-    ///@{
-    // double c1_;
-    // double beta_;
-    // casadi_int max_iter_ls_;
-    // casadi_int merit_memsize_;
-    ///@}
 
     // Print options
     bool print_header_, print_iteration_, print_status_;
@@ -210,7 +204,7 @@ namespace casadi {
     void codegen_declarations(CodeGenerator& g) const override;
 
     /// Access Conic
-    const Function getConic() const { return qpsol_;}
+    const Function getConic() const { return qpsol_standard_;}
 
     /// Print iteration header
     void print_iteration() const;

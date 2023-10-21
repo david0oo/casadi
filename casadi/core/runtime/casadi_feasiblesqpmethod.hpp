@@ -26,8 +26,6 @@ struct casadi_feasiblesqpmethod_prob {
   const casadi_nlpsol_prob<T1>* nlp;
   // Sparsity patterns
   const casadi_int *sp_h, *sp_a, *sp_hr;
-  // casadi_int merit_memsize;
-  // casadi_int max_iter_ls;
 };
 // C-REPLACE "casadi_feasiblesqpmethod_prob<T1>" "struct casadi_feasiblesqpmethod_prob"
 
@@ -67,12 +65,7 @@ struct casadi_feasiblesqpmethod_data {
 
   // Function value of feasibility iterate
   T1 f_feas;
-  // merit_mem
-  // T1* merit_mem;
-  // temp_mem
-  // T1* temp_mem;
-  // temp_sol
-  // T1* temp_sol;
+  
 };
 // C-REPLACE "casadi_feasiblesqpmethod_data<T1>" "struct casadi_feasiblesqpmethod_data"
 
@@ -129,22 +122,6 @@ void casadi_feasiblesqpmethod_work(const casadi_feasiblesqpmethod_prob<T1>* p,
     *sz_w += sz_anderson_memory;
   }
 
-  // if (elastic_mode) {
-  //   // Additional work for larger objective gradient
-  //   *sz_w += 2*ng; // gf
-  //   // Additional work for the larger bounds
-  //   *sz_w += 2*ng; // lbdz
-  //   *sz_w += 2*ng; // ubdz
-  //   // Additional work for larger solution
-  //   *sz_w += 2*ng; // dx
-  //   *sz_w += 2*ng; // dlam
-  //   // Additional work for larger jacobian
-  //   *sz_w += 2*ng; // Jk
-  //   // Additional work for temp memory
-  //   *sz_w += ng;
-  // }
-
-  // if (so_corr) *sz_w += nx+nx+ng; // Temp memory for failing soc
 }
 
 // SYMBOL "feasiblesqpmethod_init"

@@ -206,7 +206,6 @@ namespace casadi {
     tol_pr_ = 1e-6;
     tol_du_ = 1e-6;
     std::string hessian_approximation = "exact";
-    // min_step_size_ = 1e-10;
     std::string solve_type = "SQP";
     std::string qpsol_plugin = "qpoases";
     Dict qpsol_options;
@@ -416,7 +415,7 @@ namespace casadi {
     // Asp_.to_file("a.mtx");
     // uout() << qpsol_options << std::endl;
     if (use_sqp_) {
-      qpsol_ = conic("qpsol", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
+      qpsol_standard_ = conic("qpsol", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
                    qpsol_options);
       // cout << qpsol_ <<std::endl;
     } else {
@@ -426,13 +425,13 @@ namespace casadi {
       // uout() << "Nonzeros: " << Hsp_.nnz() << std::endl;
       // qpsol_ = conic("qpsol", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
       //              qpsol_options);
-      qpsol_ = conic("qpsol", qpsol_plugin, {{"a", Asp_}},
+      qpsol_standard_ = conic("qpsol", qpsol_plugin, {{"a", Asp_}},
                    qpsol_options);
       // qpsol_ = Function::load("/home/david/testproblems_feasible_casadi/qpsol.casadi");
       // cout << qpsol_ <<std::endl;
     }
 
-    alloc(qpsol_);
+    alloc(qpsol_standard_);
 
     // BFGS?
     if (!exact_hessian_) {
@@ -516,6 +515,16 @@ double Feasiblesqpmethod::eval_m_k(void* mem) const {
 double Feasiblesqpmethod::eval_tr_ratio(double val_f, double val_f_corr, double val_m_k) const {
   uout() << "predicted reduction is here:" << -val_m_k << std::endl;
   return (val_f - val_f_corr) / (-val_m_k);
+}
+
+int Feasiblesqpmethod::eval_switching_condition(double current_infeasibility, double val_m_k) const {
+  if (-val_m_k >= 0.5 * current_infeasibility){
+    uout() << "Switching condition satisfied" << std::endl;
+    return 0;
+  } else {
+    uout() << "Switching condition violated" << std::endl;
+    return 1;
+  }
 }
 
 void Feasiblesqpmethod::tr_update(void* mem, double& tr_rad, double tr_ratio) const {
@@ -1151,11 +1160,13 @@ int Feasiblesqpmethod::solve(void* mem) const {
       casadi_axpy(nx_, 1., d_nlp->lam, d->gLag);
 
       // Primal infeasability
-      double pr_inf = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
+      double primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
+      // double pr_inf = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
       // uout() << "pr_inf: " << pr_inf << std::endl;
       // inf-norm of Lagrange gradient
       // uout() << "grad Lag: " << std::vector<double>(*d->gLag,0,nx_) << std::endl;
-      double du_inf = casadi_norm_inf(nx_, d->gLag);
+      double dual_infeasibility = casadi_norm_inf(nx_, d->gLag);
+      // double du_inf = casadi_norm_inf(nx_, d->gLag);
       // uout() << "du_inf: " << du_inf << std::endl;
 
       // inf-norm of step, d->dx is a nullptr???
@@ -1168,7 +1179,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // if (m->iter_count % 10 == 0) print_iteration();
         print_iteration();
         print_iteration(m->iter_count, d_nlp->objective, m_k, tr_ratio,
-                        pr_inf, du_inf, dx_norminf, m->reg, tr_rad_prev, info);
+                        primal_infeasibility, dual_infeasibility, dx_norminf, m->reg, tr_rad_prev, info);
         info = "";
       }
       tr_rad_prev = tr_rad;
@@ -1292,17 +1303,23 @@ int Feasiblesqpmethod::solve(void* mem) const {
         if (calc_function(m, "nlp_f")) {
           uout() << "What does it mean that calc_function fails here??" << std::endl;
         }
-        tr_ratio = eval_tr_ratio(d_nlp->objective, d->f_feas, m_k);
-        tr_update(mem, tr_rad, tr_ratio);
-        if (tr_rad < feasibility_tol_) {
-          if (print_status_) print("MESSAGE(feasiblesqpmethod): "
-            "Trust-region radius smaller than feasibility!! "
-            "Abort!!.\n");
-          m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
-          break;
-        }
 
-        step_accepted = step_update(mem, tr_ratio);
+        ret = eval_switching_condition(primal_infeasibility, m_k);
+        if (ret == 0){
+          tr_ratio = eval_tr_ratio(d_nlp->objective, d->f_feas, m_k);
+          tr_update(mem, tr_rad, tr_ratio);
+          if (tr_rad < feasibility_tol_) {
+            if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+              "Trust-region radius smaller than feasibility!! "
+              "Abort!!.\n");
+            m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
+            break;
+          }
+
+          step_accepted = step_update(mem, tr_ratio);
+        } else {
+          tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
+        }
       }
 
       if (!exact_hessian_) {
@@ -1347,7 +1364,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
                            double* x_opt, double* dlam, int mode) const {
     ScopedTiming tic(m->fstats.at("QP"));
     // Inputs
-    std::fill_n(m->arg, qpsol_.n_in(), nullptr);
+    std::fill_n(m->arg, qpsol_standard_.n_in(), nullptr);
     // double lol;
     m->arg[CONIC_H] = nullptr;
     m->arg[CONIC_G] = g;
@@ -1361,7 +1378,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
     m->arg[CONIC_UBA] = ubdz+nx_;
 
     // Outputs
-    std::fill_n(m->res, qpsol_.n_out(), nullptr);
+    std::fill_n(m->res, qpsol_standard_.n_out(), nullptr);
     m->res[CONIC_X] = x_opt;
     m->res[CONIC_LAM_X] = dlam;
     m->res[CONIC_LAM_A] = dlam + nx_;
@@ -1370,10 +1387,10 @@ int Feasiblesqpmethod::solve(void* mem) const {
     // m->res[CONIC_COST] = nullptr;
 
 
-    // Solve the QP
-    qpsol_(m->arg, m->res, m->iw, m->w, 0);
+    // Solve the LP/QP
+    qpsol_standard_(m->arg, m->res, m->iw, m->w, 0);
 
-    if (qpsol_.stats()["success"]){
+    if (qpsol_standard_.stats()["success"]){
       if (verbose_) print("QP solved\n");
       return 0;
     } else {
@@ -1391,7 +1408,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
                            double* x_opt, double* dlam, int mode) const {
     ScopedTiming tic(m->fstats.at("QP"));
     // Inputs
-    std::fill_n(m->arg, qpsol_.n_in(), nullptr);
+    std::fill_n(m->arg, qpsol_standard_.n_in(), nullptr);
     m->arg[CONIC_H] = H;
     m->arg[CONIC_G] = g;
     m->arg[CONIC_X0] = x_opt;
@@ -1404,7 +1421,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
     m->arg[CONIC_UBA] = ubdz+nx_;
 
     // Outputs
-    std::fill_n(m->res, qpsol_.n_out(), nullptr);
+    std::fill_n(m->res, qpsol_standard_.n_out(), nullptr);
     m->res[CONIC_X] = x_opt;
     m->res[CONIC_LAM_X] = dlam;
     m->res[CONIC_LAM_A] = dlam + nx_;
@@ -1413,8 +1430,8 @@ int Feasiblesqpmethod::solve(void* mem) const {
     // m->res[CONIC_COST] = nullptr;
 
 
-    // Solve the QP
-    qpsol_(m->arg, m->res, m->iw, m->w, 0);
+    // Solve the LP/QP
+    qpsol_standard_(m->arg, m->res, m->iw, m->w, 0);
 
     if (verbose_) print("QP solved\n");
     return 0;
@@ -1431,7 +1448,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
     }
     // if (calc_f_ || calc_g_ || calc_lam_x_ || calc_lam_p_)
     //   g.add_dependency(get_function("nlp_grad"));
-    g.add_dependency(qpsol_);
+    g.add_dependency(qpsol_standard_);
   }
 
   void Feasiblesqpmethod::codegen_body(CodeGenerator& g) const {
@@ -1978,7 +1995,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
               const std::string&  lbdz, const std::string& ubdz,
               const std::string&  A, const std::string& x_opt,
               const std::string&  dlam, int mode) const {
-    for (casadi_int i=0;i<qpsol_.n_in();++i) cg << "m_arg[" << i << "] = 0;\n";
+    for (casadi_int i=0;i<qpsol_standard_.n_in();++i) cg << "m_arg[" << i << "] = 0;\n";
     cg << "m_arg[" << CONIC_H << "] = " << H << ";\n";
     cg << "m_arg[" << CONIC_G << "] = " << g << ";\n";
     cg << "m_arg[" << CONIC_X0 << "] = " << x_opt << ";\n";
@@ -1989,11 +2006,11 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
     cg << "m_arg[" << CONIC_A << "] = " << A << ";\n";
     cg << "m_arg[" << CONIC_LBA << "] = " << lbdz << "+" << nx_ << ";\n";
     cg << "m_arg[" << CONIC_UBA << "] = " << ubdz << "+" << nx_ << ";\n";
-    for (casadi_int i=0;i<qpsol_.n_out();++i) cg << "m_res[" << i << "] = 0;\n";
+    for (casadi_int i=0;i<qpsol_standard_.n_out();++i) cg << "m_res[" << i << "] = 0;\n";
     cg << "m_res[" << CONIC_X << "] = " << x_opt << ";\n";
     cg << "m_res[" << CONIC_LAM_X << "] = " << dlam << ";\n";
     cg << "m_res[" << CONIC_LAM_A << "] = " << dlam << "+" << nx_ << ";\n";
-    std::string flag = cg(qpsol_, "m_arg", "m_res", "m_iw", "m_w");
+    std::string flag = cg(qpsol_standard_, "m_arg", "m_res", "m_iw", "m_w");
     cg << "ret = " << flag << ";\n";
     cg << "if (ret == -1000) return -1000;\n"; // equivalent to raise Exception
   }
@@ -2003,7 +2020,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
               const std::string&  lbdz, const std::string& ubdz,
               const std::string&  A, const std::string& x_opt,
               const std::string&  dlam, int mode) const {
-    for (casadi_int i=0;i<qpsol_.n_in();++i) cg << "m_arg[" << i << "] = 0;\n";
+    for (casadi_int i=0;i<qpsol_standard_.n_in();++i) cg << "m_arg[" << i << "] = 0;\n";
     cg << "m_arg[" << CONIC_H << "] = " << NULL << ";\n";
     cg << "m_arg[" << CONIC_G << "] = " << g << ";\n";
     cg << "m_arg[" << CONIC_X0 << "] = " << x_opt << ";\n";
@@ -2014,11 +2031,11 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
     cg << "m_arg[" << CONIC_A << "] = " << A << ";\n";
     cg << "m_arg[" << CONIC_LBA << "] = " << lbdz << "+" << nx_ << ";\n";
     cg << "m_arg[" << CONIC_UBA << "] = " << ubdz << "+" << nx_ << ";\n";
-    for (casadi_int i=0;i<qpsol_.n_out();++i) cg << "m_res[" << i << "] = 0;\n";
+    for (casadi_int i=0;i<qpsol_standard_.n_out();++i) cg << "m_res[" << i << "] = 0;\n";
     cg << "m_res[" << CONIC_X << "] = " << x_opt << ";\n";
     cg << "m_res[" << CONIC_LAM_X << "] = " << dlam << ";\n";
     cg << "m_res[" << CONIC_LAM_A << "] = " << dlam << "+" << nx_ << ";\n";
-    std::string flag = cg(qpsol_, "m_arg", "m_res", "m_iw", "m_w");
+    std::string flag = cg(qpsol_standard_, "m_arg", "m_res", "m_iw", "m_w");
     cg << "ret = " << flag << ";\n";
     cg << "if (ret == -1000) return -1000;\n"; // equivalent to raise Exception
   }
@@ -2406,10 +2423,8 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
 
   Feasiblesqpmethod::Feasiblesqpmethod(DeserializingStream& s) : Nlpsol(s) {
     int version = s.version("Feasiblesqpmethod", 1, 3);
-    s.unpack("Feasiblesqpmethod::qpsol", qpsol_);
-    if (version>=3) {
-      s.unpack("Feasiblesqpmethod::qpsol_ela", qpsol_ela_);
-    }
+    s.unpack("Feasiblesqpmethod::qpsol", qpsol_standard_);
+
     s.unpack("Feasiblesqpmethod::exact_hessian", exact_hessian_);
     s.unpack("Feasiblesqpmethod::max_iter", max_iter_);
     s.unpack("Feasiblesqpmethod::min_iter", min_iter_);
@@ -2474,8 +2489,8 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
   void Feasiblesqpmethod::serialize_body(SerializingStream &s) const {
     Nlpsol::serialize_body(s);
     s.version("Feasiblesqpmethod", 3);
-    s.pack("Feasiblesqpmethod::qpsol", qpsol_);
-    // s.pack("Feasiblesqpmethod::qpsol_ela", qpsol_ela_);
+    s.pack("Feasiblesqpmethod::qpsol", qpsol_standard_);
+    // s.pack("Feasiblesqpmethod::qpsol_standard_ela", qpsol_standard_ela_);
     s.pack("Feasiblesqpmethod::exact_hessian", exact_hessian_);
     s.pack("Feasiblesqpmethod::max_iter", max_iter_);
     s.pack("Feasiblesqpmethod::min_iter", min_iter_);
