@@ -207,6 +207,9 @@ namespace casadi {
     const Function getConic() const { return qpsol_standard_;}
 
     /// Print iteration header
+    void print_header() const;
+
+    /// Print iteration header
     void print_iteration() const;
 
     /// Print iteration

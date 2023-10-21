@@ -373,8 +373,9 @@ namespace casadi {
       create_function("nlp_grad_f", {"x", "p"},
                      {"grad:f:x"});
     }
-    Asp_ = get_function("nlp_jac_g").sparsity_out(0);
 
+    // Get sparsity pattern for A and H
+    Asp_ = get_function("nlp_jac_g").sparsity_out(0);
     /*
     if (!has_function("nlp_jac_fg")) {
       create_function("nlp_jac_fg", {"x", "p"},
@@ -415,7 +416,7 @@ namespace casadi {
     // Asp_.to_file("a.mtx");
     // uout() << qpsol_options << std::endl;
     if (use_sqp_) {
-      qpsol_standard_ = conic("qpsol", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
+      qpsol_standard_ = conic("subproblem_solver", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
                    qpsol_options);
       // cout << qpsol_ <<std::endl;
     } else {
@@ -425,13 +426,26 @@ namespace casadi {
       // uout() << "Nonzeros: " << Hsp_.nnz() << std::endl;
       // qpsol_ = conic("qpsol", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
       //              qpsol_options);
-      qpsol_standard_ = conic("qpsol", qpsol_plugin, {{"a", Asp_}},
+      qpsol_standard_ = conic("subproblem_solver", qpsol_plugin, {{"a", Asp_}},
                    qpsol_options);
       // qpsol_ = Function::load("/home/david/testproblems_feasible_casadi/qpsol.casadi");
       // cout << qpsol_ <<std::endl;
     }
 
     alloc(qpsol_standard_);
+
+
+    // Allocate the solver for feasibility restoration
+    Sparsity Asp_restoration = Sparsity(Asp_);
+
+    Sparsity dsp = Sparsity::diag(ng_, ng_);
+    Asp_restoration.appendColumns(dsp);
+    Asp_restoration.appendColumns(dsp);
+
+    casadi_assert(!qpsol_plugin.empty(), "'qpsol' option has not been set");
+    qpsol_restoration_ = conic("qpsol_ela", qpsol_plugin, {{"a", Asp_restoration}},
+                  qpsol_options);
+    alloc(qpsol_restoration_);
 
     // BFGS?
     if (!exact_hessian_) {
@@ -440,20 +454,8 @@ namespace casadi {
 
     // Header
     if (print_header_) {
-      print("-------------------------------------------\n");
-      print("This is casadi::Feasiblesqpmethod.\n");
-      if (exact_hessian_) {
-        print("Using exact Hessian\n");
-      } else {
-        print("Using limited memory BFGS Hessian approximation\n");
-      }
-      print("Number of variables:                       %9d\n", nx_);
-      print("Number of constraints:                     %9d\n", ng_);
-      print("Number of nonzeros in constraint Jacobian: %9d\n", Asp_.nnz());
-      print("Number of nonzeros in Lagrangian Hessian:  %9d\n", Hsp_.nnz());
-      print("\n");
+      print_header();
     }
-
 
     set_feasiblesqpmethod_prob();
     // Allocate memory
@@ -1332,6 +1334,27 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
     return 0;
   }
+
+  void Feasiblesqpmethod::print_header() const {
+    print("-------------------------------------------\n");
+      print("This is casadi::Feasiblesqpmethod.\n");
+      if (use_sqp_){
+        print("Using SQP method\n");
+        if (exact_hessian_) {
+          print("Using exact Hessian\n");
+        } else {
+          print("Using limited memory BFGS Hessian approximation\n");
+        }
+      } else {
+        print("Using SLP method\n");
+      }
+      print("Number of variables:                       %9d\n", nx_);
+      print("Number of constraints:                     %9d\n", ng_);
+      print("Number of nonzeros in constraint Jacobian: %9d\n", Asp_.nnz());
+      print("Number of nonzeros in Lagrangian Hessian:  %9d\n", Hsp_.nnz());
+      print("\n");
+  }
+
 
   void Feasiblesqpmethod::print_iteration() const {
     print("%4s %9s %14s %9s %9s %9s %9s %7s %5s %7s\n",
