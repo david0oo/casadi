@@ -179,7 +179,7 @@ namespace casadi {
     // -------- FROM HERE OPTIONS FOR FP-SQP ------------------
 
     // tolerances
-    double optimality_tol_, feasibility_tol_;
+    double optimality_tol_, feasibility_tol_, tolerance_tube_tol_;
 
     // trust-region parameters
     double tr_eta1_, tr_eta2_;
@@ -222,13 +222,19 @@ namespace casadi {
     virtual int solve_QP(FeasiblesqpmethodMemory* m, const double* H, const double* g,
                           const double* lbdz, const double* ubdz,
                           const double* A,
-                          double* x_opt, double* dlam, int mode) const;
+                          double* x_opt, double* dlam) const;
 
     // Solve the LP
     virtual int solve_LP(FeasiblesqpmethodMemory* m, const double* g,
                           const double* lbdz, const double* ubdz,
                           const double* A,
-                          double* x_opt, double* dlam, int mode) const;
+                          double* x_opt, double* dlam) const;
+
+    // Solve the restoration LP
+    virtual int solve_restoration_LP(FeasiblesqpmethodMemory* m, const double* g,
+                          const double* lbdz, const double* ubdz,
+                          const double* A,
+                          double* x_opt, double* dlam) const;
 
     // Solve the QP subproblem
     void codegen_qp_solve(CodeGenerator& cg, const std::string& H, const std::string& g,
