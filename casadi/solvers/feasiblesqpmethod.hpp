@@ -114,7 +114,7 @@ namespace casadi {
     int step_update(void* mem, double tr_ratio) const;
 
     // function to get feasible iterate
-    int feasibility_iterations(void* mem, double tr_rad) const;
+    int feasibility_iterations(void* mem, double tr_rad, double tube_size) const;
 
     void anderson_acc_step_update(void* mem, casadi_int iter_index) const;
 
@@ -180,7 +180,7 @@ namespace casadi {
 
     // tolerances
     double optimality_tol_, feasibility_tol_, tolerance_tube_tol_;
-
+    double tolerance_tube_beta_;
     // trust-region parameters
     double tr_eta1_, tr_eta2_;
     double tr_alpha1_, tr_alpha2_;
@@ -258,7 +258,7 @@ namespace casadi {
 
     void codegen_step_update(CodeGenerator& cg, const std::string& tr_ratio) const;
 
-    void codegen_feasibility_iterations(CodeGenerator& cg, const std::string& tr_rad) const;
+    void codegen_feasibility_iterations(CodeGenerator& cg, const std::string& tr_rad, const std::string& tube_size) const;
 
     // Solve the QP subproblem
     // void codegen_qp_ela_solve(CodeGenerator& cg, const std::string& H, const std::string& g,

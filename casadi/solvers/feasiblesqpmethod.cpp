@@ -218,9 +218,10 @@ namespace casadi {
     init_feasible_ = false;
 
     // parameters and options for FP-SQP solver
-    optimality_tol_ = 1e-8;
-    feasibility_tol_ = 1e-8;
+    optimality_tol_ = 1e-7;
+    feasibility_tol_ = 1e-7;
     tolerance_tube_tol_ = 1e-3;
+    tolerance_tube_beta_ = 0.9;
     tr_eta1_ = 0.25;
     tr_eta2_ = 0.75;
     tr_alpha1_ = 0.5;
@@ -675,7 +676,7 @@ Calculates the feasibility_iterations. If iterations are accepted return 0.
 If iterations are aborted return -1.
 */
 
-int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad) const {
+int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double tube_size) const {
   auto m = static_cast<FeasiblesqpmethodMemory*>(mem);
   auto d_nlp = &m->d_nlp;
   auto d = &m->d;
@@ -745,7 +746,7 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad) const {
   double watchdog_prev_inf_norm = prev_step_inf_norm; // until here everything is correct!
 
   for (int j=0; j<max_inner_iter_; ++j) {
-    if (current_infeasibility < tolerance_tube_tol_) {
+    if (current_infeasibility < tube_size) {
       inner_iter = j;
       // kappa_acceptance = true;
       if (projection_ratio < 0.5) {
@@ -916,7 +917,7 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad) const {
       kappa_watchdog = step_inf_norm / watchdog_prev_inf_norm;
       watchdog_prev_inf_norm = step_inf_norm;
       print("Kappa watchdog: %9.10f\n", kappa_watchdog);
-      if (current_infeasibility < tolerance_tube_tol_ && projection_ratio < 0.5) {
+      if (current_infeasibility < tube_size && projection_ratio < 0.5) {
         // kappa_acceptance = true;
         return 0;
       }
@@ -960,6 +961,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
     double tr_ratio = 0.0;
 
     double tr_rad = tr_rad0_;
+    double tube_size = tolerance_tube_tol_;
     double tr_rad_prev = tr_rad0_;
 
     // transfer the scale vector to the problem
@@ -1071,7 +1073,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
           }
 
           // test if initialization is feasible
-          if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > tolerance_tube_tol_) {
+          if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > tube_size) {
             if (print_status_)print("MESSAGE(feasiblesqpmethod): "
                 "No feasible initialization given! "
                 "Find feasible initialization.\n");
@@ -1199,7 +1201,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
       casadi_clip_min(d->lbdz, nx_, -tr_rad, d->tr_mask);
       // uout() << "lbdz: " << std::vector<double>(d->lbdz, d->lbdz+nx_) << std::endl;
 
-
       // Define upper bounds
       casadi_copy(d_nlp->ubz, nx_+ng_, d->ubdz);
       casadi_axpy(nx_+ng_, -1., d_nlp->z, d->ubdz);
@@ -1251,7 +1252,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         casadi_fill(temp1, 2*ng_, 1.0);
 
         // Make initial guess feasible on constraints by altering slack variables
-        double* temp_mem = d->z_tmp+nx_;
+        double* temp_mem = d->z_feas+nx_;
         casadi_mv(d->Jk, Asp_, d->dx, temp_mem, false);
         for (casadi_int i = 0; i < ng_; ++i) {
           if (d->ubdz[nx_+2*ng_+i]-temp_mem[i] < 0) {
@@ -1274,20 +1275,29 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
         // Prepare trial iterate -----------
         // self.x_tmp = self.x_k + p_tmp
-        casadi_copy(d_nlp->z, nx_+ng_, d->z_tmp);
-        casadi_axpy(nx_, 1., d->dx, d->z_tmp);
+        casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
+        casadi_axpy(nx_, 1., d->dx, d->z_feas);
         // eval g at this new iterate
         //   self.g_tmp = self.__eval_g(self.x_tmp)
-        m->arg[0] = d->z_tmp;
+        m->arg[0] = d->z_feas;
         m->arg[1] = d_nlp->p;
-        m->res[0] = d->z_tmp + nx_;
+        m->res[0] = d->z_feas + nx_;
         if (calc_function(m, "nlp_g")) {
           uout() << "What does it mean that calc_function fails here??" << std::endl;
         }
 
+        // Evaluate f
+        m->arg[0] = d->z_feas;
+        m->arg[1] = d_nlp->p;
+        m->res[0] = &d->f_feas;
+        if (calc_function(m, "nlp_f")) {
+          uout() << "What does it mean that calc_function fails here??" << std::endl;
+        }
+
         uout() << "step norm" << casadi_norm_1(nx_, d->dx) << std::endl;
-        uout() << "trial iterate norm" << casadi_norm_1(nx_, d->z_tmp) << std::endl;
-        double l1_infeasibility_trial_iterate = casadi_sum_viol(nx_+ng_, d->z_tmp, d_nlp->lbz, d_nlp->ubz);
+        uout() << "trial iterate norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
+        double l1_infeasibility_trial_iterate = casadi_sum_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
+        double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
         uout() << "inf_trial iterate: " << l1_infeasibility_trial_iterate << std::endl;
         double l1_infeasibility_linearized_step = casadi_sum(d->dx+nx_, 2*ng_);
         double ared = l1_infeasibility_current_iterate - l1_infeasibility_trial_iterate;
@@ -1296,11 +1306,33 @@ int Feasiblesqpmethod::solve(void* mem) const {
         double tr_ratio_restoration = ared / pred;
         uout() << "tr_ratio restoration: " << tr_ratio_restoration << std::endl;
 
-        if (ret != 0){
-          throw std::runtime_error("Error in Restoration LP!");
-        } else {
-          throw std::runtime_error("Restoration LP succesfully solved!");
+        tr_update(mem, tr_rad, tr_ratio_restoration);
+        if (tr_rad < feasibility_tol_) {
+          if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+            "Trust-region radius smaller than feasibility!! "
+            "Abort!!.\n");
+          m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
+          break;
         }
+
+
+        step_accepted = step_update(mem, tr_ratio_restoration);
+
+        if (step_accepted == 0){
+          uout() << "step accepted" << std::endl;
+        } else {
+          uout() << "step rejected" << std::endl;
+        }
+
+        if (l_infty_infeasibility_trial_iterate <= tolerance_tube_beta_*tube_size){
+          tube_size = tolerance_tube_beta_*tube_size;
+        }
+
+        // if (ret != 0){
+        //   throw std::runtime_error("Error in Restoration LP!");
+        // } else {
+        //   throw std::runtime_error("Restoration LP succesfully solved!");
+        // }
 
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       } else { // do step update with feasibility iterations
@@ -1315,7 +1347,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
         // Eval quadratic model and check for convergence
         m_k = eval_m_k(mem);
-        if (fabs(m_k) < optimality_tol_) {
+        if (primal_infeasibility <= feasibility_tol_ && fabs(m_k) <= optimality_tol_) {
           if (print_status_)
             print("MESSAGE(feasiblesqpmethod): "
                   "Optimal Point Found? Quadratic model is zero. "
@@ -1335,7 +1367,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         }
 
         // Do the feasibility iterations here
-        ret = feasibility_iterations(mem, tr_rad);
+        ret = feasibility_iterations(mem, tr_rad, tube_size);
 
         // Check if step was accepted or not
         if (ret < 0) {
@@ -1786,7 +1818,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         //   break;
         // }
         std::string  viol = g.max_viol(nx_+ ng_, "d_nlp.z", "d_nlp.lbz", "d_nlp.ubz");
-        g << "if (" << viol << "> " << tolerance_tube_tol_ << ") {\n";
+        g << "if (" << viol << "> " << "tube_size" << ") {\n";
         g << "printf(\"MESSAGE(feasiblesqpmethod): "
              "No feasible initialization given! Find feasible initialization.\\n\");\n";
         g << "break;\n";
@@ -2036,7 +2068,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
       // Do the feasibility iterations here
       // ret = feasibility_iterations(mem, tr_rad);
       g.comment("Do the feasibility iterations here");
-      codegen_feasibility_iterations(g, "tr_rad");
+      codegen_feasibility_iterations(g, "tr_rad", "tube_size");
 
       g << "if (ret < 0) {\n";
         g << "printf(\"Rejected inner iterates\\n\");\n";
@@ -2213,7 +2245,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
 }
 
   void Feasiblesqpmethod::codegen_feasibility_iterations(CodeGenerator& cg,
-    const std::string& tr_rad) const {
+    const std::string& tr_rad, const std::string& tube_size) const {
   // cg.local("ret", "casadi_int");
   cg.init_local("ret", "0");
 
@@ -2321,7 +2353,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
   //     return -1;
   //   }
   cg << "for (int j=0;j<" << max_inner_iter_ << "; ++j) {\n";
-    cg << "if (current_infeasibility < " << tolerance_tube_tol_ << ") {\n";
+    cg << "if (current_infeasibility < " << tube_size << ") {\n";
       cg << "inner_iter = j;\n";
       cg << "if (projection_ratio < 0.5) {\n";
         cg << "ret = 0; \n";
@@ -2495,7 +2527,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
       cg << "kappa_watchdog = step_inf_norm / watchdog_prev_inf_norm;\n";
       cg << "watchdog_prev_inf_norm = step_inf_norm;\n";
       cg << "printf(\"Kappa watchdog: %9.10f\\n\", kappa_watchdog);\n";
-      cg << "if (current_infeasibility < "<< tolerance_tube_tol_ << "&& projection_ratio < 0.5) {\n";
+      cg << "if (current_infeasibility < "<< tube_size << "&& projection_ratio < 0.5) {\n";
         cg << "ret = 0;\n";
         cg << "break; \n";
       cg << "}\n";
