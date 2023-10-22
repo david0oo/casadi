@@ -1072,6 +1072,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
             casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
           }
 
+          uout() << "We are here!!! Shouldn't we terminate??" << std::endl;
           // test if initialization is feasible
           if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > tube_size) {
             if (print_status_)print("MESSAGE(feasiblesqpmethod): "
@@ -1216,6 +1217,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       int ret = 0;
       // Solve the QP
+      uout() << "We solve the LP" << std::endl;
       if (use_sqp_) {
         ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
                  d->dx, d->dlam);
@@ -1318,13 +1320,13 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
         step_accepted = step_update(mem, tr_ratio_restoration);
 
-        if (step_accepted == 0){
-          uout() << "step accepted" << std::endl;
-        } else {
-          uout() << "step rejected" << std::endl;
-        }
+        if (step_accepted != 0){
+          uout() << "We put old derivative information back in place" << std::endl;
+          
+        } 
 
-        if (l_infty_infeasibility_trial_iterate <= tolerance_tube_beta_*tube_size){
+        // if (l_infty_infeasibility_trial_iterate <= tolerance_tube_beta_*tube_size){
+        if (step_accepted == 0 && primal_infeasibility <= tolerance_tube_beta_*tube_size){
           tube_size = tolerance_tube_beta_*tube_size;
         }
 
@@ -1344,38 +1346,20 @@ int Feasiblesqpmethod::solve(void* mem) const {
           }
         }
 
-        // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
-        // Eval quadratic model and check for convergence
-        m_k = eval_m_k(mem);
-        if (primal_infeasibility <= feasibility_tol_ && fabs(m_k) <= optimality_tol_) {
-          if (print_status_)
-            print("MESSAGE(feasiblesqpmethod): "
-                  "Optimal Point Found? Quadratic model is zero. "
-                  "After %d iterations\n", m->iter_count-1);
-          m->return_status = "Solve_Succeeded";
-          m->success = true;
-          break;
-        }
-
-        // uout() << "QP step: " << std::vector<double>(d->dx, d->dx+nx_) << std::endl;
-        // Detecting indefiniteness
-        if (use_sqp_) {
-          double gain = casadi_bilin(d->Bk, Hsp_, d->dx, d->dx);
-          if (gain < 0) {
-            if (print_status_) print("WARNING(feasiblesqpmethod): Indefinite Hessian detected\n");
+        if (primal_infeasibility > tolerance_tube_beta_*tube_size) {
+          
+          // x_trial = x_k + d_k
+          casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
+          casadi_axpy(nx_, 1., d->dx, d->z_feas);
+          // eval g at this new iterate
+          //   self.g_tmp = self.__eval_g(self.x_tmp)
+          m->arg[0] = d->z_feas;
+          m->arg[1] = d_nlp->p;
+          m->res[0] = d->z_feas + nx_;
+          if (calc_function(m, "nlp_g")) {
+            uout() << "What does it mean that calc_function fails here??" << std::endl;
           }
-        }
 
-        // Do the feasibility iterations here
-        ret = feasibility_iterations(mem, tr_rad, tube_size);
-
-        // Check if step was accepted or not
-        if (ret < 0) {
-          uout() << "Rejected inner iterates" << std::endl;
-          // uout() << casadi_masked_norm_inf(nx_, d->dx, d->tr_mask) << std::endl;
-
-          tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
-        } else {
           // Evaluate f
           m->arg[0] = d->z_feas;
           m->arg[1] = d_nlp->p;
@@ -1384,29 +1368,96 @@ int Feasiblesqpmethod::solve(void* mem) const {
             uout() << "What does it mean that calc_function fails here??" << std::endl;
           }
 
-          ret = eval_switching_condition(primal_infeasibility, m_k);
-          if (ret == 0){
-            tr_ratio = eval_tr_ratio(d_nlp->objective, d->f_feas, m_k);
-            tr_update(mem, tr_rad, tr_ratio);
-            if (tr_rad < feasibility_tol_) {
-              if (print_status_) print("MESSAGE(feasiblesqpmethod): "
-                "Trust-region radius smaller than feasibility!! "
-                "Abort!!.\n");
-              m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
-              break;
+          double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
+
+          double tr_ratio_phaseI = (primal_infeasibility - l_infty_infeasibility_trial_iterate) / primal_infeasibility;
+          uout() << "tr_ratio restoration: " << tr_ratio_phaseI << std::endl;
+
+          tr_update(mem, tr_rad, tr_ratio_phaseI);
+          if (tr_rad < feasibility_tol_) {
+            if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+              "Trust-region radius smaller than feasibility!! "
+              "Abort!!.\n");
+            m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
+            break;
+          }
+
+
+          step_accepted = step_update(mem, tr_ratio_phaseI);
+
+          if (step_accepted == 0){
+            uout() << "step accepted" << std::endl;
+          } else {
+            uout() << "step rejected" << std::endl;
+          }
+
+
+        } else {
+
+          // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
+          // Eval quadratic model and check for convergence
+          m_k = eval_m_k(mem);
+          if (primal_infeasibility <= feasibility_tol_ && fabs(m_k) <= optimality_tol_) {
+            if (print_status_)
+              print("MESSAGE(feasiblesqpmethod): "
+                    "Optimal Point Found? Quadratic model is zero. "
+                    "After %d iterations\n", m->iter_count-1);
+            m->return_status = "Solve_Succeeded";
+            m->success = true;
+            break;
+          }
+
+          // uout() << "QP step: " << std::vector<double>(d->dx, d->dx+nx_) << std::endl;
+          // Detecting indefiniteness
+          if (use_sqp_) {
+            double gain = casadi_bilin(d->Bk, Hsp_, d->dx, d->dx);
+            if (gain < 0) {
+              if (print_status_) print("WARNING(feasiblesqpmethod): Indefinite Hessian detected\n");
+            }
+          }
+
+          // Do the feasibility iterations here
+          ret = feasibility_iterations(mem, tr_rad, tube_size);
+
+          // Check if step was accepted or not
+          if (ret < 0) {
+            uout() << "Rejected inner iterates" << std::endl;
+            // uout() << casadi_masked_norm_inf(nx_, d->dx, d->tr_mask) << std::endl;
+
+            tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
+          } else {
+            // Evaluate f
+            m->arg[0] = d->z_feas;
+            m->arg[1] = d_nlp->p;
+            m->res[0] = &d->f_feas;
+            if (calc_function(m, "nlp_f")) {
+              uout() << "What does it mean that calc_function fails here??" << std::endl;
             }
 
-            step_accepted = step_update(mem, tr_ratio);
-          } else {
-            tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
-          }
-        }
+            ret = eval_switching_condition(primal_infeasibility, m_k);
+            if (ret == 0){
+              tr_ratio = eval_tr_ratio(d_nlp->objective, d->f_feas, m_k);
+              tr_update(mem, tr_rad, tr_ratio);
+              if (tr_rad < feasibility_tol_) {
+                if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+                  "Trust-region radius smaller than feasibility!! "
+                  "Abort!!.\n");
+                m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
+                break;
+              }
 
-        if (!exact_hessian_) {
-          // Evaluate the gradient of the Lagrangian with the old x but new lam (for BFGS)
-          casadi_copy(d->gf, nx_, d->gLag_old);
-          casadi_mv(d->Jk, Asp_, d_nlp->lam+nx_, d->gLag_old, true);
-          casadi_axpy(nx_, 1., d_nlp->lam, d->gLag_old);
+              step_accepted = step_update(mem, tr_ratio);
+            } else {
+              tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
+            }
+          }
+
+          if (!exact_hessian_) {
+            // Evaluate the gradient of the Lagrangian with the old x but new lam (for BFGS)
+            casadi_copy(d->gf, nx_, d->gLag_old);
+            casadi_mv(d->Jk, Asp_, d_nlp->lam+nx_, d->gLag_old, true);
+            casadi_axpy(nx_, 1., d_nlp->lam, d->gLag_old);
+          }
         }
 
       } // end of restoration or other phase
