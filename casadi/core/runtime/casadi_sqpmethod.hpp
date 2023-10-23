@@ -17,7 +17,6 @@
 //    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-
 // C-REPLACE "casadi_nlpsol_prob<T1>" "struct casadi_nlpsol_prob"
 
 // SYMBOL "sqpmethod_prob"
@@ -30,7 +29,6 @@ struct casadi_sqpmethod_prob {
   casadi_int max_iter_ls;
 };
 // C-REPLACE "casadi_sqpmethod_prob<T1>" "struct casadi_sqpmethod_prob"
-
 
 // SYMBOL "sqpmethod_data"
 template<typename T1>
@@ -59,7 +57,6 @@ struct casadi_sqpmethod_data {
   T1* temp_sol;
 };
 // C-REPLACE "casadi_sqpmethod_data<T1>" "struct casadi_sqpmethod_data"
-
 
 // SYMBOL "sqpmethod_work"
 template<typename T1>

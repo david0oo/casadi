@@ -39,8 +39,6 @@ struct casadi_feasiblesqpmethod_data {
   T1 *gLag, *gLag_old;
   // Gradient of the objective
   T1 *gf;
-  // Gradient of the restoration problem
-  T1 *gf_restoration;
   // Bounds of the QP
   T1 *lbdz, *ubdz;
   // QP solution
@@ -64,6 +62,13 @@ struct casadi_feasiblesqpmethod_data {
   T1* anderson_memory_iterate;
   T1* gamma;
 
+  // Gradient of the restoration problem
+  T1 *gf_restoration;
+  T1 *lbdz_restoration;
+  T1 *ubdz_restoration;
+  T1 *dx_restoration;
+  T1 *dlam_restoration;
+  T1 *Jk_restoration;
   // Function value of feasibility iterate
   T1 f_feas;
   
@@ -126,17 +131,15 @@ void casadi_feasiblesqpmethod_work(const casadi_feasiblesqpmethod_prob<T1>* p,
   // Additional work for feasibility restoration
   *sz_w += nx + 2*ng; // gradient for restoration problem
   // Additional work for the larger bounds
-  *sz_w += 2*ng; // lbdz
-  *sz_w += 2*ng; // ubdz
+  *sz_w += nx + ng + 2*ng; // lbdz
+  *sz_w += nx + ng + 2*ng; // ubdz
   // Additional work for larger solution
-  *sz_w += 2*ng; // dx
-  *sz_w += 2*ng; // dlam
+  *sz_w += nx + 2*ng; // dx
+  *sz_w += nx + ng + 2*ng; // dlam
   // Additional work for larger jacobian
-  *sz_w += 2*ng; // Jk
+  *sz_w += nnz_a + 2*ng; // Jk
   // Additional work for temp memory
   // *sz_w += ng; not sure if we need that
-
-
 }
 
 // SYMBOL "feasiblesqpmethod_init"
@@ -162,13 +165,12 @@ void casadi_feasiblesqpmethod_init(casadi_feasiblesqpmethod_data<T1>* d,
 
   // Gradient of the objective
   d->gf = *w; *w += nx;
-  d->gf_restoration = *w; *w += nx + 2*ng;
   // Bounds of the QP
-  d->lbdz = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
-  d->ubdz = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
+  d->lbdz = *w; *w += nx + ng; 
+  d->ubdz = *w; *w += nx + ng;
   // QP solution
-  d->dx = *w; *w += nx + 2*ng; // 2*ng for slack variables in restoration
-  d->dlam = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
+  d->dx = *w; *w += nx; 
+  d->dlam = *w; *w += nx + ng;
   // Feasible QP solution
   d->dx_feas = *w; *w += nx;
   d->dlam_feas = *w; *w += nx + ng;
@@ -184,8 +186,14 @@ void casadi_feasiblesqpmethod_init(casadi_feasiblesqpmethod_data<T1>* d,
   d->tr_scale_vector = *w; *w += nx;
   d->tr_mask = *iw; *iw += nx;
   // Jacobian
-  d->Jk = *w; *w += nnz_a + 2*ng; // 2*ng for slack variables in diagonal in restoration
-  // temp mem
+  d->Jk = *w; *w += nnz_a;
+  // Restoration
+  d->gf_restoration = *w; *w += nx + 2*ng;
+  d->lbdz_restoration = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
+  d->ubdz_restoration = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
+  d->dx_restoration = *w; *w += nx + 2*ng; // 2*ng for slack variables in restoration
+  d->dlam_restoration = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
+  d->Jk_restoration = *w; *w += nnz_a + 2*ng; // 2*ng for slack variables in diagonal in restoration
   // d->temp_mem = *w; *w += ng; not sure if we need that
   // Anderson vector
   d->anderson_memory_step = *w; *w += sz_anderson_memory*nx;

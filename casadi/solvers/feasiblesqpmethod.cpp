@@ -146,6 +146,9 @@ namespace casadi {
       {"tolerance_tube_tol",
        {OT_DOUBLE,
         "Tolerance-Tube tolerance. Iterates are supposed to stay in this tube."}},
+      {"tolerance_tube_beta",
+       {OT_DOUBLE,
+        "Tolerance-Tube beta. Reduction factor for tolerance tube."}},
       {"tr_rad0",
        {OT_DOUBLE,
         "Initial trust-region radius."}},
@@ -221,7 +224,7 @@ namespace casadi {
     optimality_tol_ = 1e-7;
     feasibility_tol_ = 1e-7;
     tolerance_tube_tol_ = 1e-3;
-    tolerance_tube_beta_ = 0.9;
+    tolerance_tube_beta_ = 1.0;
     tr_eta1_ = 0.25;
     tr_eta2_ = 0.75;
     tr_alpha1_ = 0.5;
@@ -323,6 +326,8 @@ namespace casadi {
         feasibility_tol_ = op.second;
       } else if (op.first == "tolerance_tube_tol") {
         tolerance_tube_tol_ = op.second;
+      } else if (op.first == "tolerance_tube_beta") {
+        tolerance_tube_beta_ = op.second;
       } else if (op.first == "tr_rad0") {
         tr_rad0_ = op.second;
       } else if (op.first == "tr_eta1") {
@@ -449,7 +454,7 @@ namespace casadi {
     Asp_restoration.appendColumns(dsp);
 
     casadi_assert(!qpsol_plugin.empty(), "'qpsol' option has not been set");
-    qpsol_restoration_ = conic("qpsol_ela", qpsol_plugin, {{"a", Asp_restoration}},
+    qpsol_restoration_ = conic("qpsol_restoration", qpsol_plugin, {{"a", Asp_restoration}},
                   qpsol_options);
     alloc(qpsol_restoration_);
 
@@ -670,12 +675,10 @@ void Feasiblesqpmethod::anderson_acc_update_memory(void* mem, double* step, doub
   }
 }
 
-
 /*
 Calculates the feasibility_iterations. If iterations are accepted return 0.
 If iterations are aborted return -1.
 */
-
 int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double tube_size) const {
   auto m = static_cast<FeasiblesqpmethodMemory*>(mem);
   auto d_nlp = &m->d_nlp;
@@ -742,11 +745,17 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   double kappa = 0.0;
   double acc_projection_ratio = 0.0;
 
+  if (current_infeasibility <= tolerance_tube_beta_*tube_size) {   
+        return 0;
+  } else {
+        uout() << "Tolerance-tube violated" << std::endl; 
+        return -1;
+  }
 
   double watchdog_prev_inf_norm = prev_step_inf_norm; // until here everything is correct!
 
   for (int j=0; j<max_inner_iter_; ++j) {
-    if (current_infeasibility < tube_size) {
+    if (current_infeasibility <= tolerance_tube_beta_*tube_size) {
       inner_iter = j;
       // kappa_acceptance = true;
       if (projection_ratio < 0.5) {
@@ -917,7 +926,7 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
       kappa_watchdog = step_inf_norm / watchdog_prev_inf_norm;
       watchdog_prev_inf_norm = step_inf_norm;
       print("Kappa watchdog: %9.10f\n", kappa_watchdog);
-      if (current_infeasibility < tube_size && projection_ratio < 0.5) {
+      if (current_infeasibility <= tolerance_tube_beta_*tube_size && projection_ratio < 0.5) {
         // kappa_acceptance = true;
         return 0;
       }
@@ -957,9 +966,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
     // Default quadratic model value of objective
     double m_k = -1.0;
-
     double tr_ratio = 0.0;
-
     double tr_rad = tr_rad0_;
     double tube_size = tolerance_tube_tol_;
     double tr_rad_prev = tr_rad0_;
@@ -1002,6 +1009,11 @@ int Feasiblesqpmethod::solve(void* mem) const {
         default:
           return 1;
       }*/
+
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+      // Evaluate the problem functions depending on step acceptance and rejectance
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
       if (m->iter_count == 0) {
         // Evaluate the sensitivities -------------------------------------------
         // Evaluate f
@@ -1018,72 +1030,73 @@ int Feasiblesqpmethod::solve(void* mem) const {
         if (calc_function(m, "nlp_g")) {
           uout() << "What does it mean that calc_function fails here??" << std::endl;
         }
-        // Evaluate grad_f
-        m->arg[0] = d_nlp->z;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = d->gf;
-        if (calc_function(m, "nlp_grad_f")) {
-          uout() << "What does it mean that calc_function fails here??" << std::endl;
-        }
-        // Evaluate jac_g
-        m->arg[0] = d_nlp->z;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = d->Jk;
-        switch (calc_function(m, "nlp_jac_g")) {
-          case -1:
-            m->return_status = "Non_Regular_Sensitivities";
-            m->unified_return_status = SOLVER_RET_NAN;
-            if (print_status_)
-              print("MESSAGE(feasiblesqpmethod): "
-                    "No regularity of sensitivities at current point.\n");
-            return 1;
-          case 0:
-            break;
-          default:
-            return 1;
-        }
-        // uout() << "x0: " << *d_nlp->z << std::endl;
-        // uout() << "nlp_f: " << d_nlp->objective << std::endl;
-        // uout() << "nlp_g: " << *(d_nlp->z + nx_) << std::endl;
+      }
+        // // Evaluate grad_f
+        // m->arg[0] = d_nlp->z;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = d->gf;
+        // if (calc_function(m, "nlp_grad_f")) {
+        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+        // }
+        // // Evaluate jac_g
+        // m->arg[0] = d_nlp->z;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = d->Jk;
+        // switch (calc_function(m, "nlp_jac_g")) {
+        //   case -1:
+        //     m->return_status = "Non_Regular_Sensitivities";
+        //     m->unified_return_status = SOLVER_RET_NAN;
+        //     if (print_status_)
+        //       print("MESSAGE(feasiblesqpmethod): "
+        //             "No regularity of sensitivities at current point.\n");
+        //     return 1;
+        //   case 0:
+        //     break;
+        //   default:
+        //     return 1;
+        // }
+        // // uout() << "x0: " << *d_nlp->z << std::endl;
+        // // uout() << "nlp_f: " << d_nlp->objective << std::endl;
+        // // uout() << "nlp_g: " << *(d_nlp->z + nx_) << std::endl;
 
-        if (use_sqp_) {
-          if (exact_hessian_) {
-            // Update/reset exact Hessian
-            m->arg[0] = d_nlp->z;
-            m->arg[1] = d_nlp->p;
-            m->arg[2] = &one;
-            m->arg[3] = d_nlp->lam + nx_;
-            m->res[0] = d->Bk;
-            if (calc_function(m, "nlp_hess_l")) return 1;
-            if (convexify_) {
-              ScopedTiming tic(m->fstats.at("convexify"));
-              if (convexify_eval(&convexify_data_.config, d->Bk, d->Bk, m->iw, m->w)) return 1;
-            }
-          } else if (m->iter_count==0) {
-            ScopedTiming tic(m->fstats.at("BFGS"));
-            // Initialize BFGS
-            casadi_fill(d->Bk, Hsp_.nnz(), 1.);
-            casadi_bfgs_reset(Hsp_, d->Bk);
-          } else {
-            ScopedTiming tic(m->fstats.at("BFGS"));
-            // Update BFGS
-            if (m->iter_count % lbfgs_memory_ == 0) casadi_bfgs_reset(Hsp_, d->Bk);
-            // Update the Hessian approximation
-            casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
-          }
+        // if (use_sqp_) {
+        //   if (exact_hessian_) {
+        //     // Update/reset exact Hessian
+        //     m->arg[0] = d_nlp->z;
+        //     m->arg[1] = d_nlp->p;
+        //     m->arg[2] = &one;
+        //     m->arg[3] = d_nlp->lam + nx_;
+        //     m->res[0] = d->Bk;
+        //     if (calc_function(m, "nlp_hess_l")) return 1;
+        //     if (convexify_) {
+        //       ScopedTiming tic(m->fstats.at("convexify"));
+        //       if (convexify_eval(&convexify_data_.config, d->Bk, d->Bk, m->iw, m->w)) return 1;
+        //     }
+        //   } else if (m->iter_count==0) {
+        //     ScopedTiming tic(m->fstats.at("BFGS"));
+        //     // Initialize BFGS
+        //     casadi_fill(d->Bk, Hsp_.nnz(), 1.);
+        //     casadi_bfgs_reset(Hsp_, d->Bk);
+        //   } else {
+        //     ScopedTiming tic(m->fstats.at("BFGS"));
+        //     // Update BFGS
+        //     if (m->iter_count % lbfgs_memory_ == 0) casadi_bfgs_reset(Hsp_, d->Bk);
+        //     // Update the Hessian approximation
+        //     casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
+        //   }
 
-          uout() << "We are here!!! Shouldn't we terminate??" << std::endl;
-          // test if initialization is feasible
-          if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > tube_size) {
-            if (print_status_)print("MESSAGE(feasiblesqpmethod): "
-                "No feasible initialization given! "
-                "Find feasible initialization.\n");
-            m->return_status = "No_Feasible_Initialization";
-            break;
-          }
-        }
+        //   uout() << "We are here!!! Shouldn't we terminate??" << std::endl;
+        //   // test if initialization is feasible
+        //   if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > tube_size) {
+        //     if (print_status_)print("MESSAGE(feasiblesqpmethod): "
+        //         "No feasible initialization given! "
+        //         "Find feasible initialization.\n");
+        //     m->return_status = "No_Feasible_Initialization";
+        //     break;
+        //   }
+        // }
 
-      } else if (step_accepted == 0) {
+      if (m->iter_count == 0 || step_accepted == 0) {
         // Evaluate grad_f
         m->arg[0] = d_nlp->z;
         m->arg[1] = d_nlp->p;
@@ -1149,7 +1162,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
       double primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
       // uout() << "pr_inf: " << pr_inf << std::endl;
       // inf-norm of Lagrange gradient
-      // uout() << "grad Lag: " << std::vector<double>(*d->gLag,0,nx_) << std::endl;
+      uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
       double dual_infeasibility = casadi_norm_inf(nx_, d->gLag);
       // uout() << "du_inf: " << du_inf << std::endl;
 
@@ -1200,24 +1213,21 @@ int Feasiblesqpmethod::solve(void* mem) const {
       casadi_copy(d_nlp->lbz, nx_+ng_, d->lbdz);
       casadi_axpy(nx_+ng_, -1., d_nlp->z, d->lbdz);
       casadi_clip_min(d->lbdz, nx_, -tr_rad, d->tr_mask);
-      // uout() << "lbdz: " << std::vector<double>(d->lbdz, d->lbdz+nx_) << std::endl;
 
       // Define upper bounds
       casadi_copy(d_nlp->ubz, nx_+ng_, d->ubdz);
       casadi_axpy(nx_+ng_, -1., d_nlp->z, d->ubdz);
       casadi_clip_max(d->ubdz, nx_, tr_rad, d->tr_mask);
-      // uout() << "ubdz: " << std::vector<double>(d->ubdz, d->ubdz+nx_) << std::endl;
 
       // Initial guess
       casadi_copy(d_nlp->lam, nx_+ng_, d->dlam);
-      //casadi_clear(d->dx, nx_);
+      casadi_clear(d->dx, nx_);
 
       // Increase counter
       m->iter_count++;
 
       int ret = 0;
       // Solve the QP
-      uout() << "We solve the LP" << std::endl;
       if (use_sqp_) {
         ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
                  d->dx, d->dlam);
@@ -1227,23 +1237,36 @@ int Feasiblesqpmethod::solve(void* mem) const {
       }
 
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
-      if (ret != 0){ // do restoration
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+      // do feasibility restoration
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+      if (ret != 0){
+        uout() << "Restoration" << std::endl;
+
+        // Initial guess
+        casadi_clear(d->dx_restoration, nx_+2*ng_);
+        casadi_clear(d->dlam_restoration, nx_+3*ng_);
+        casadi_copy(d_nlp->lam, nx_, d->dlam);
+        casadi_copy(d_nlp->lam + nx_, ng_, d->dlam + nx_ + 2 * ng_);
 
         // Add identity matrices on off diagonal of A matrix
         double *temp1, *temp2;
-        temp1 = d->Jk + Asp_.nnz();
+        casadi_copy(d->Jk, Asp_.nnz(), d->Jk_restoration);
+        temp1 = d->Jk_restoration + Asp_.nnz();
         casadi_fill(temp1, ng_, -1.);
         temp1 += ng_;
         casadi_fill(temp1, ng_, 1.);
 
         // Initialize bounds
-        temp1 = d->lbdz + nx_;
-        temp2 = d->lbdz + nx_+2*ng_;
+        casadi_copy(d->lbdz, nx_+ng_, d->lbdz_restoration);
+        temp1 = d->lbdz_restoration + nx_;
+        temp2 = d->lbdz_restoration + nx_+2*ng_;
         casadi_copy(temp1, ng_, temp2); // shift the bounds for constraints
         casadi_clear(temp1, 2*ng_);
 
-        temp1 = d->ubdz + nx_;
-        temp2 = d->ubdz + nx_+2*ng_;
+        casadi_copy(d->ubdz, nx_+ng_, d->ubdz_restoration);
+        temp1 = d->ubdz_restoration + nx_;
+        temp2 = d->ubdz_restoration + nx_+2*ng_;
         casadi_copy(temp1, ng_, temp2); // shift the bounds for constraints
         casadi_fill(temp1, 2*ng_, inf);
 
@@ -1254,31 +1277,38 @@ int Feasiblesqpmethod::solve(void* mem) const {
         casadi_fill(temp1, 2*ng_, 1.0);
 
         // Make initial guess feasible on constraints by altering slack variables
+        casadi_clear(d->z_feas, nx_ + ng_);
         double* temp_mem = d->z_feas+nx_;
-        casadi_mv(d->Jk, Asp_, d->dx, temp_mem, false);
+        casadi_mv(d->Jk, Asp_, d->dx_restoration, temp_mem, false); // problem was dx had inf values because infeasible!
         for (casadi_int i = 0; i < ng_; ++i) {
-          if (d->ubdz[nx_+2*ng_+i]-temp_mem[i] < 0) {
-            d->dx[nx_+i] = -d->ubdz[nx_+2*ng_+i]+temp_mem[i];
+          if (d->ubdz_restoration[nx_+2*ng_+i]-temp_mem[i] < 0) {
+            d->dx_restoration[nx_+i] = fmax(-d->ubdz_restoration[nx_+2*ng_+i]+temp_mem[i], 0);
           }
 
           if (d->lbdz[nx_+2*ng_+i]-temp_mem[i] > 0) {
-            d->dx[nx_+ng_+i] = d->lbdz[nx_+2*ng_+i]-temp_mem[i];
+            d->dx_restoration[nx_+ng_+i] = fmax(d->lbdz_restoration[nx_+2*ng_+i]-temp_mem[i], 0);
           }
         }
 
         // Solve the QP
-        int ret = solve_restoration_LP(m, d->gf_restoration, d->lbdz, d->ubdz, d->Jk, d->dx, d->dlam);
+        int ret = solve_restoration_LP(m, d->gf_restoration,
+                                        d->lbdz_restoration, d->ubdz_restoration, d->Jk_restoration, d->dx_restoration, d->dlam_restoration);
+        if (ret == 0){
+          uout() << "Successful restoration LP!" << std::endl;
+        } else {
+          std::runtime_error("Restoration LP was not solved succesfully!");
+        }
 
-        // do step acceptance test
+        // prepare step acceptance test
         // prepare trust-region ratio
         double l1_infeasibility_current_iterate = casadi_sum_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
-        uout() << "inf_current iterate: " << l1_infeasibility_current_iterate << std::endl;
-        uout() << "trial iterate norm" << casadi_norm_1(nx_, d_nlp->z) << std::endl;
+        uout() << "l1_violation current iterate: " << l1_infeasibility_current_iterate << std::endl;
+        uout() << "current iterate l1 norm" << casadi_norm_1(nx_, d_nlp->z) << std::endl;
 
         // Prepare trial iterate -----------
         // self.x_tmp = self.x_k + p_tmp
         casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
-        casadi_axpy(nx_, 1., d->dx, d->z_feas);
+        casadi_axpy(nx_, 1., d->dx_restoration, d->z_feas);
         // eval g at this new iterate
         //   self.g_tmp = self.__eval_g(self.x_tmp)
         m->arg[0] = d->z_feas;
@@ -1296,12 +1326,12 @@ int Feasiblesqpmethod::solve(void* mem) const {
           uout() << "What does it mean that calc_function fails here??" << std::endl;
         }
 
-        uout() << "step norm" << casadi_norm_1(nx_, d->dx) << std::endl;
-        uout() << "trial iterate norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
+        uout() << "step norm" << casadi_norm_1(nx_, d->dx_restoration) << std::endl;
+        uout() << "trial iterate l1 norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
         double l1_infeasibility_trial_iterate = casadi_sum_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
         double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
-        uout() << "inf_trial iterate: " << l1_infeasibility_trial_iterate << std::endl;
-        double l1_infeasibility_linearized_step = casadi_sum(d->dx+nx_, 2*ng_);
+        uout() << "l1_violation current iterate: " << l1_infeasibility_trial_iterate << std::endl;
+        double l1_infeasibility_linearized_step = casadi_sum(d->dx_restoration+nx_, 2*ng_);
         double ared = l1_infeasibility_current_iterate - l1_infeasibility_trial_iterate;
         double pred = l1_infeasibility_current_iterate - l1_infeasibility_linearized_step;
         uout() << "pred: " << pred << std::endl;
@@ -1317,27 +1347,18 @@ int Feasiblesqpmethod::solve(void* mem) const {
           break;
         }
 
-
         step_accepted = step_update(mem, tr_ratio_restoration);
 
-        if (step_accepted != 0){
-          uout() << "We put old derivative information back in place" << std::endl;
-          
-        } 
+        uout() << "Step accepted variable: " << step_accepted << std::endl;
 
-        // if (l_infty_infeasibility_trial_iterate <= tolerance_tube_beta_*tube_size){
         if (step_accepted == 0 && primal_infeasibility <= tolerance_tube_beta_*tube_size){
           tube_size = tolerance_tube_beta_*tube_size;
         }
 
-        // if (ret != 0){
-        //   throw std::runtime_error("Error in Restoration LP!");
-        // } else {
-        //   throw std::runtime_error("Restoration LP succesfully solved!");
-        // }
-
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
-      } else { // do step update with feasibility iterations
+      // do the standard step update with feasibility iterations
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      } else {
 
         // Clean up the Lagrange multipliers
         for (int i=0; i<nx_; ++i){
@@ -1347,7 +1368,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         }
 
         if (primal_infeasibility > tolerance_tube_beta_*tube_size) {
-          
+          uout() << "Phase I" << std::endl;
           // x_trial = x_k + d_k
           casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
           casadi_axpy(nx_, 1., d->dx, d->z_feas);
@@ -1394,6 +1415,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
         } else {
 
+          uout() << "Phase II" << std::endl;
           // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
           // Eval quadratic model and check for convergence
           m_k = eval_m_k(mem);
