@@ -531,7 +531,8 @@ double Feasiblesqpmethod::eval_tr_ratio(double val_f, double val_f_corr, double 
 }
 
 int Feasiblesqpmethod::eval_switching_condition(double current_infeasibility, double val_m_k) const {
-  if (-val_m_k >= 0.5 * current_infeasibility){
+  uout() << "pred: " << (-val_m_k) << std::endl;
+  if (-val_m_k >= 0.1 * current_infeasibility){
     uout() << "Switching condition satisfied" << std::endl;
     return 0;
   } else {
@@ -1013,9 +1014,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Evaluate the problem functions depending on step acceptance and rejectance
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
       if (m->iter_count == 0) {
-        // Evaluate the sensitivities -------------------------------------------
         // Evaluate f
         m->arg[0] = d_nlp->z;
         m->arg[1] = d_nlp->p;
@@ -1031,70 +1030,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
           uout() << "What does it mean that calc_function fails here??" << std::endl;
         }
       }
-        // // Evaluate grad_f
-        // m->arg[0] = d_nlp->z;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = d->gf;
-        // if (calc_function(m, "nlp_grad_f")) {
-        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-        // }
-        // // Evaluate jac_g
-        // m->arg[0] = d_nlp->z;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = d->Jk;
-        // switch (calc_function(m, "nlp_jac_g")) {
-        //   case -1:
-        //     m->return_status = "Non_Regular_Sensitivities";
-        //     m->unified_return_status = SOLVER_RET_NAN;
-        //     if (print_status_)
-        //       print("MESSAGE(feasiblesqpmethod): "
-        //             "No regularity of sensitivities at current point.\n");
-        //     return 1;
-        //   case 0:
-        //     break;
-        //   default:
-        //     return 1;
-        // }
-        // // uout() << "x0: " << *d_nlp->z << std::endl;
-        // // uout() << "nlp_f: " << d_nlp->objective << std::endl;
-        // // uout() << "nlp_g: " << *(d_nlp->z + nx_) << std::endl;
-
-        // if (use_sqp_) {
-        //   if (exact_hessian_) {
-        //     // Update/reset exact Hessian
-        //     m->arg[0] = d_nlp->z;
-        //     m->arg[1] = d_nlp->p;
-        //     m->arg[2] = &one;
-        //     m->arg[3] = d_nlp->lam + nx_;
-        //     m->res[0] = d->Bk;
-        //     if (calc_function(m, "nlp_hess_l")) return 1;
-        //     if (convexify_) {
-        //       ScopedTiming tic(m->fstats.at("convexify"));
-        //       if (convexify_eval(&convexify_data_.config, d->Bk, d->Bk, m->iw, m->w)) return 1;
-        //     }
-        //   } else if (m->iter_count==0) {
-        //     ScopedTiming tic(m->fstats.at("BFGS"));
-        //     // Initialize BFGS
-        //     casadi_fill(d->Bk, Hsp_.nnz(), 1.);
-        //     casadi_bfgs_reset(Hsp_, d->Bk);
-        //   } else {
-        //     ScopedTiming tic(m->fstats.at("BFGS"));
-        //     // Update BFGS
-        //     if (m->iter_count % lbfgs_memory_ == 0) casadi_bfgs_reset(Hsp_, d->Bk);
-        //     // Update the Hessian approximation
-        //     casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
-        //   }
-
-        //   uout() << "We are here!!! Shouldn't we terminate??" << std::endl;
-        //   // test if initialization is feasible
-        //   if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > tube_size) {
-        //     if (print_status_)print("MESSAGE(feasiblesqpmethod): "
-        //         "No feasible initialization given! "
-        //         "Find feasible initialization.\n");
-        //     m->return_status = "No_Feasible_Initialization";
-        //     break;
-        //   }
-        // }
 
       if (m->iter_count == 0 || step_accepted == 0) {
         // Evaluate grad_f
@@ -1121,9 +1056,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
           default:
             return 1;
         }
-        // uout() << "x0: " << *d_nlp->z << std::endl;
-        // uout() << "nlp_f: " << d_nlp->objective << std::endl;
-        // uout() << "nlp_g: " << *(d_nlp->z + nx_) << std::endl;
 
         if (use_sqp_) {
           if (exact_hessian_) {
@@ -1160,11 +1092,8 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       // Primal infeasability
       double primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
-      // uout() << "pr_inf: " << pr_inf << std::endl;
-      // inf-norm of Lagrange gradient
-      uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
       double dual_infeasibility = casadi_norm_inf(nx_, d->gLag);
-      // uout() << "du_inf: " << du_inf << std::endl;
+      uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
 
       // inf-norm of step, d->dx is a nullptr???
       // uout() << "HERE!!!!" << *d->dx << std::endl;
@@ -1208,7 +1137,12 @@ int Feasiblesqpmethod::solve(void* mem) const {
         break;
       }
 
-      // Formulate the QP
+      // Increase iteration counter
+      m->iter_count++;
+
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+      // Formulate the QP and try to solve it
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       // Define lower bounds
       casadi_copy(d_nlp->lbz, nx_+ng_, d->lbdz);
       casadi_axpy(nx_+ng_, -1., d_nlp->z, d->lbdz);
@@ -1223,8 +1157,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
       casadi_copy(d_nlp->lam, nx_+ng_, d->dlam);
       casadi_clear(d->dx, nx_);
 
-      // Increase counter
-      m->iter_count++;
 
       int ret = 0;
       // Solve the QP
@@ -1236,11 +1168,13 @@ int Feasiblesqpmethod::solve(void* mem) const {
                  d->dx, d->dlam);
       }
 
+      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
-      // do feasibility restoration
-      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       if (ret != 0){
+        //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+        // Restoration phase
+        //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         uout() << "Restoration" << std::endl;
 
         // Initial guess
@@ -1355,10 +1289,10 @@ int Feasiblesqpmethod::solve(void* mem) const {
           tube_size = tolerance_tube_beta_*tube_size;
         }
 
-      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
-      // do the standard step update with feasibility iterations
-      //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       } else {
+        //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
+        // do the standard step update with feasibility iterations
+        //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         // Clean up the Lagrange multipliers
         for (int i=0; i<nx_; ++i){
@@ -1414,7 +1348,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
 
         } else {
-
           uout() << "Phase II" << std::endl;
           // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
           // Eval quadratic model and check for convergence
@@ -1491,7 +1424,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
   void Feasiblesqpmethod::print_header() const {
     print("-------------------------------------------\n");
-      print("This is casadi::Feasiblesqpmethod.\n");
+      print("This is casadi::Tolerance-Tube Method.\n");
       if (use_sqp_){
         print("Using SQP method\n");
         if (exact_hessian_) {
@@ -1561,8 +1494,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
     m->res[CONIC_LAM_A] = dlam + nx_;
     double obj;
     m->res[CONIC_COST] = &obj;
-    // m->res[CONIC_COST] = nullptr;
-
 
     // Solve the LP/QP
     qpsol_standard_(m->arg, m->res, m->iw, m->w, 0);
@@ -1576,8 +1507,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
     }
 
     return -1;
-    // return 0;
-
   }
 
   int Feasiblesqpmethod::solve_restoration_LP(FeasiblesqpmethodMemory* m, const double* g,
