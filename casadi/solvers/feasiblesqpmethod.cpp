@@ -757,12 +757,12 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   double kappa = 0.0;
   double acc_projection_ratio = 0.0;
 
-  if (current_infeasibility <= tolerance_tube_beta_*tube_size) {   
-        return 0;
-  } else {
-        uout() << "Tolerance-tube violated" << std::endl; 
-        return -1;
-  }
+  // if (current_infeasibility <= tolerance_tube_beta_*tube_size) {   
+  //       return 0;
+  // } else {
+  //       uout() << "Tolerance-tube violated" << std::endl; 
+  //       return -1;
+  // }
 
   double watchdog_prev_inf_norm = prev_step_inf_norm; // until here everything is correct!
 
@@ -1014,7 +1014,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
           m->return_status = "Non_Regular_Sensitivities";
           m->unified_return_status = SOLVER_RET_NAN;
           if (print_status_)
-            print("MESSAGE(feasiblesqpmethod): No regularity of sensitivities at current point.\n");
+            print("MESSAGE(tolerance-tube method): No regularity of sensitivities at current point.\n");
           return 1;
         case 0:
           break;
@@ -1059,7 +1059,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
             m->return_status = "Non_Regular_Sensitivities";
             m->unified_return_status = SOLVER_RET_NAN;
             if (print_status_)
-              print("MESSAGE(feasiblesqpmethod): "
+              print("MESSAGE(tolerance-tube method): "
                     "No regularity of sensitivities at current point.\n");
             return 1;
           case 0:
@@ -1123,7 +1123,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       // Callback function
       if (callback(m)) {
-        if (print_status_) print("WARNING(feasiblesqpmethod): Aborted by callback...\n");
+        if (print_status_) print("WARNING(tolerance-tube method): Aborted by callback...\n");
         m->return_status = "User_Requested_Stop";
         break;
       }
@@ -1132,7 +1132,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
       // Where is the complementarity condition??
       // if (m->iter_count >= min_iter_ && pr_inf < tol_pr_ && du_inf < tol_du_) {
       //   if (print_status_)
-      //     print("MESSAGE(feasiblesqpmethod): "
+      //     print("MESSAGE(tolerance-tube method): "
       //           "Convergence achieved after %d iterations\n", m->iter_count);
       //   m->return_status = "Solve_Succeeded";
       //   m->success = true;
@@ -1141,7 +1141,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       if (m->iter_count >= max_iter_) {
         if (print_status_) {
-          print("MESSAGE(feasiblesqpmethod): Maximum number of iterations reached.\n");
+          print("MESSAGE(tolerance-tube method): Maximum number of iterations reached.\n");
         }
         m->return_status = "Maximum_Iterations_Exceeded";
         m->unified_return_status = SOLVER_RET_LIMITED;
@@ -1170,15 +1170,15 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
 
       int ret = 0;
-      // Solve the QP
-      // if (use_sqp_) {
-      //   ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
-      //            d->dx, d->dlam);
-      // } else {
-      //   ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
-      //            d->dx, d->dlam);
-      // }
-      ret = 1;
+      // Solve the LP
+      if (use_sqp_) {
+        ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
+                 d->dx, d->dlam);
+      } else {
+        ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
+                 d->dx, d->dlam);
+      }
+
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
@@ -1187,6 +1187,14 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // Restoration phase
         //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         uout() << "Restoration" << std::endl;
+        if (primal_infeasibility <= feasibility_tol_) {
+        if (print_status_) {
+          print("MESSAGE(tolerancetube): Converged to feasible not optimal point.\n");
+        }
+        m->return_status = "Converged_to_feasible_not_optimal_point";
+        m->unified_return_status = SOLVER_RET_LIMITED;
+        break;
+        }
 
         // Initial guess
         casadi_clear(d->dx_restoration, nx_+2*ng_);
@@ -1290,7 +1298,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
         tr_update(mem, tr_rad, tr_ratio_restoration, "restoration");
         // if (tr_rad < feasibility_tol_) {
-        //   if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+        //   if (print_status_) print("MESSAGE(tolerance-tube method): "
         //     "Trust-region radius smaller than feasibility!! "
         //     "Abort!!.\n");
         //   m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
@@ -1346,13 +1354,12 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
           tr_update(mem, tr_rad, tr_ratio_phaseI, "optimality");
           if (tr_rad < feasibility_tol_) {
-            if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+            if (print_status_) print("MESSAGE(tolerance-tube method): "
               "Trust-region radius smaller than feasibility!! "
               "Abort!!.\n");
             m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
             break;
           }
-
 
           step_accepted = step_update(mem, tr_ratio_phaseI);
 
@@ -1362,7 +1369,6 @@ int Feasiblesqpmethod::solve(void* mem) const {
             uout() << "step rejected" << std::endl;
           }
 
-
         } else {
           uout() << "Phase II" << std::endl;
           // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
@@ -1370,7 +1376,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
           m_k = eval_m_k(mem);
           if (primal_infeasibility <= feasibility_tol_ && fabs(m_k) <= optimality_tol_) {
             if (print_status_)
-              print("MESSAGE(feasiblesqpmethod): "
+              print("MESSAGE(tolerance-tube method): "
                     "Optimal Point Found? Quadratic model is zero. "
                     "After %d iterations\n", m->iter_count-1);
             m->return_status = "Solve_Succeeded";
@@ -1378,12 +1384,13 @@ int Feasiblesqpmethod::solve(void* mem) const {
             break;
           }
 
+          uout() << "norm inf step: " << casadi_norm_inf(nx_,d->dx) << std::endl;
           // uout() << "QP step: " << std::vector<double>(d->dx, d->dx+nx_) << std::endl;
           // Detecting indefiniteness
           if (use_sqp_) {
             double gain = casadi_bilin(d->Bk, Hsp_, d->dx, d->dx);
             if (gain < 0) {
-              if (print_status_) print("WARNING(feasiblesqpmethod): Indefinite Hessian detected\n");
+              if (print_status_) print("WARNING(tolerance-tube method): Indefinite Hessian detected\n");
             }
           }
 
@@ -1410,7 +1417,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
               tr_ratio = eval_tr_ratio(d_nlp->objective, d->f_feas, m_k);
               tr_update(mem, tr_rad, tr_ratio, "optimality");
               if (tr_rad < feasibility_tol_) {
-                if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+                if (print_status_) print("MESSAGE(tolerance-tube method): "
                   "Trust-region radius smaller than feasibility!! "
                   "Abort!!.\n");
                 m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
@@ -1769,7 +1776,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         //     m->return_status = "Non_Regular_Sensitivities";
         //     m->unified_return_status = SOLVER_RET_NAN;
         //     if (print_status_)
-        //       print("MESSAGE(feasiblesqpmethod): "
+        //       print("MESSAGE(tolerance-tube method): "
         //             "No regularity of sensitivities at current point.\n");
         //     return 1;
         //   case 0:
@@ -1829,7 +1836,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         // }
         // test if initialization is feasible
         // if (casadi_max_viol(nx_ + ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz) > feasibility_tol_) {
-        //   if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+        //   if (print_status_) print("MESSAGE(tolerance-tube method): "
         //       "No feasible initialization given! "
         //       "Find feasible initialization.\n");
         //   m->return_status = "No_Feasible_Initialization";
@@ -1837,7 +1844,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         // }
         std::string  viol = g.max_viol(nx_+ ng_, "d_nlp.z", "d_nlp.lbz", "d_nlp.ubz");
         g << "if (" << viol << "> " << "tube_size" << ") {\n";
-        g << "printf(\"MESSAGE(feasiblesqpmethod): "
+        g << "printf(\"MESSAGE(tolerance-tube method): "
              "No feasible initialization given! Find feasible initialization.\\n\");\n";
         g << "break;\n";
         g << "}\n";
@@ -1868,7 +1875,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
         //     m->return_status = "Non_Regular_Sensitivities";
         //     m->unified_return_status = SOLVER_RET_NAN;
         //     if (print_status_)
-        //       print("MESSAGE(feasiblesqpmethod): "
+        //       print("MESSAGE(tolerance-tube method): "
         //             "No regularity of sensitivities at current point.\n");
         //     return 1;
         //   case 0:
@@ -1983,7 +1990,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
       // Where is the complementarity condition??
       // if (m->iter_count >= min_iter_ && pr_inf < tol_pr_ && du_inf < tol_du_) {
       //   if (print_status_)
-      //     print("MESSAGE(feasiblesqpmethod): "
+      //     print("MESSAGE(tolerance-tube method): "
       //            "Convergence achieved after %d iterations\n", m->iter_count);
       //   m->return_status = "Solve_Succeeded";
       //   m->success = true;
@@ -1993,7 +2000,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
 
       g << "if (iter_count >= " << max_iter_ << ") {\n";
         g << "if (" << print_status_ << ") {\n";
-        g << g.printf("MESSAGE(feasiblesqpmethod): "
+        g << g.printf("MESSAGE(tolerance-tube method): "
                       "Maximum number of iterations reached.\\n") << "\n";
         g << "break;\n";
         g << "}\n";
@@ -2057,7 +2064,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
 
       g.comment("Checking convergence criteria");
       g << "if (fabs(m_k) < " << optimality_tol_ << ") {\n";
-      g << "printf(\"MESSAGE(feasiblesqpmethod): Optimal Point Found? "
+      g << "printf(\"MESSAGE(tolerance-tube method): Optimal Point Found? "
            "Quadratic model is zero. After %lld iterations.\\n\", iter_count-1);\n";
       g << "break;\n";
       g << "}\n";
@@ -2067,7 +2074,7 @@ void Feasiblesqpmethod::codegen_declarations(CodeGenerator& g) const {
       // if (use_sqp_) {
       //   double gain = casadi_bilin(d->Bk, Hsp_, d->dx, d->dx);
       //   if (gain < 0) {
-      //     if (print_status_) print("WARNING(feasiblesqpmethod): Indefinite Hessian detected\n");
+      //     if (print_status_) print("WARNING(tolerance-tube method): Indefinite Hessian detected\n");
       //   }
       // }
 
