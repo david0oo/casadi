@@ -541,14 +541,25 @@ int Feasiblesqpmethod::eval_switching_condition(double current_infeasibility, do
   }
 }
 
-void Feasiblesqpmethod::tr_update(void* mem, double& tr_rad, double tr_ratio) const {
+void Feasiblesqpmethod::tr_update(void* mem, double& tr_rad, double tr_ratio, std::string phase) const {
   auto m = static_cast<FeasiblesqpmethodMemory*>(mem);
   auto d = &m->d;
+  
+  double *temp;
+  if (phase == "optimality") {
+    temp = d->dx;
+  } else if (phase == "restoration") {
+    temp = d->dx_restoration;
+  } else {
+    throw std::invalid_argument("Wrong string given!");
+  }
 
   if (tr_ratio < tr_eta1_) {
-    tr_rad = tr_alpha1_ * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
+    uout() << "masked norm inf: " << casadi_masked_norm_inf(nx_, temp, d->tr_mask) << std::endl;
+    uout() << "new radius: " << tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask)<< std::endl;
+    tr_rad = tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask);
   } else if (tr_ratio > tr_eta2_ &&
-             abs(casadi_masked_norm_inf(nx_, d->dx, d->tr_mask) - tr_rad) < optimality_tol_) {
+             abs(casadi_masked_norm_inf(nx_, temp, d->tr_mask) - tr_rad) < optimality_tol_) {
     tr_rad = fmin(tr_alpha2_*tr_rad, tr_rad_max_);
   }
   // else: keep trust-region as it is....
@@ -1160,14 +1171,14 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       int ret = 0;
       // Solve the QP
-      if (use_sqp_) {
-        ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
-                 d->dx, d->dlam);
-      } else {
-        ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
-                 d->dx, d->dlam);
-      }
-
+      // if (use_sqp_) {
+      //   ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
+      //            d->dx, d->dlam);
+      // } else {
+      //   ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
+      //            d->dx, d->dlam);
+      // }
+      ret = 1;
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
@@ -1180,8 +1191,8 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // Initial guess
         casadi_clear(d->dx_restoration, nx_+2*ng_);
         casadi_clear(d->dlam_restoration, nx_+3*ng_);
-        casadi_copy(d_nlp->lam, nx_, d->dlam);
-        casadi_copy(d_nlp->lam + nx_, ng_, d->dlam + nx_ + 2 * ng_);
+        casadi_copy(d_nlp->lam, nx_, d->dlam_restoration);
+        casadi_copy(d_nlp->lam + nx_, ng_, d->dlam_restoration + nx_ + 2 * ng_);
 
         // Add identity matrices on off diagonal of A matrix
         double *temp1, *temp2;
@@ -1230,7 +1241,12 @@ int Feasiblesqpmethod::solve(void* mem) const {
         if (ret == 0){
           uout() << "Successful restoration LP!" << std::endl;
         } else {
-          std::runtime_error("Restoration LP was not solved succesfully!");
+          throw std::runtime_error("Restoration LP was not solved succesfully!");
+        }
+        uout() << "Norm_inf of dx_restoration: " << casadi_norm_inf(nx_, d->dx_restoration) << std::endl;
+
+        if (casadi_norm_inf(nx_, d->dx_restoration) <= 1e-12){
+          throw std::runtime_error("Restoration phase search direction is 0.");
         }
 
         // prepare step acceptance test
@@ -1272,14 +1288,14 @@ int Feasiblesqpmethod::solve(void* mem) const {
         double tr_ratio_restoration = ared / pred;
         uout() << "tr_ratio restoration: " << tr_ratio_restoration << std::endl;
 
-        tr_update(mem, tr_rad, tr_ratio_restoration);
-        if (tr_rad < feasibility_tol_) {
-          if (print_status_) print("MESSAGE(feasiblesqpmethod): "
-            "Trust-region radius smaller than feasibility!! "
-            "Abort!!.\n");
-          m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
-          break;
-        }
+        tr_update(mem, tr_rad, tr_ratio_restoration, "restoration");
+        // if (tr_rad < feasibility_tol_) {
+        //   if (print_status_) print("MESSAGE(feasiblesqpmethod): "
+        //     "Trust-region radius smaller than feasibility!! "
+        //     "Abort!!.\n");
+        //   m->return_status = "Trust_Region_Radius_Becomes_Too_Small";
+        //   break;
+        // }
 
         step_accepted = step_update(mem, tr_ratio_restoration);
 
@@ -1328,7 +1344,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
           double tr_ratio_phaseI = (primal_infeasibility - l_infty_infeasibility_trial_iterate) / primal_infeasibility;
           uout() << "tr_ratio restoration: " << tr_ratio_phaseI << std::endl;
 
-          tr_update(mem, tr_rad, tr_ratio_phaseI);
+          tr_update(mem, tr_rad, tr_ratio_phaseI, "optimality");
           if (tr_rad < feasibility_tol_) {
             if (print_status_) print("MESSAGE(feasiblesqpmethod): "
               "Trust-region radius smaller than feasibility!! "
@@ -1392,7 +1408,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
             ret = eval_switching_condition(primal_infeasibility, m_k);
             if (ret == 0){
               tr_ratio = eval_tr_ratio(d_nlp->objective, d->f_feas, m_k);
-              tr_update(mem, tr_rad, tr_ratio);
+              tr_update(mem, tr_rad, tr_ratio, "optimality");
               if (tr_rad < feasibility_tol_) {
                 if (print_status_) print("MESSAGE(feasiblesqpmethod): "
                   "Trust-region radius smaller than feasibility!! "

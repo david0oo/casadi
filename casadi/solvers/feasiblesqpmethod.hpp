@@ -109,7 +109,7 @@ namespace casadi {
     
     int eval_switching_condition(double current_infeasibility, double val_m_k) const;
 
-    void tr_update(void* mem, double& tr_rad, double tr_ratio) const;
+    void tr_update(void* mem, double& tr_rad, double tr_ratio, std::string phase) const;
 
     int step_update(void* mem, double tr_ratio) const;
 
