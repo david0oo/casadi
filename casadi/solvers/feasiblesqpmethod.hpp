@@ -103,6 +103,8 @@ namespace casadi {
     void set_work(void* mem, const double**& arg, double**& res,
                           casadi_int*& iw, double*& w) const override;
 
+    // void eval_f(FeasiblesqpmethodMemory* m, double* z, const double* p, double& output) const;
+
     double eval_m_k(void* mem) const;
 
     double eval_tr_ratio(double val_f, double val_f_corr, double val_m_k) const;

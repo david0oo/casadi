@@ -757,12 +757,12 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   double kappa = 0.0;
   double acc_projection_ratio = 0.0;
 
-  // if (current_infeasibility <= tolerance_tube_beta_*tube_size) {   
-  //       return 0;
-  // } else {
-  //       uout() << "Tolerance-tube violated" << std::endl; 
-  //       return -1;
-  // }
+  if (current_infeasibility <= tolerance_tube_beta_*tube_size) {   
+        return 0;
+  } else {
+        uout() << "Tolerance-tube violated" << std::endl; 
+        return -1;
+  }
 
   double watchdog_prev_inf_norm = prev_step_inf_norm; // until here everything is correct!
 
@@ -965,6 +965,16 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   return -1;
 }
 
+// void eval_f(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double& output){
+//   // Evaluate f
+//   m->arg[0] = input_z;
+//   m->arg[1] = parameter;
+//   m->res[0] = &output;
+//   if (calc_function(m, "nlp_f")) {
+//     uout() << "Evaluation error for f!!" << std::endl;
+//   }
+// }
+
 int Feasiblesqpmethod::solve(void* mem) const {
     auto m = static_cast<FeasiblesqpmethodMemory*>(mem);
     auto d_nlp = &m->d_nlp;
@@ -1026,7 +1036,8 @@ int Feasiblesqpmethod::solve(void* mem) const {
       // Evaluate the problem functions depending on step acceptance and rejectance
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       if (m->iter_count == 0) {
-        // Evaluate f
+        //Evaluate f
+        // eval_f(m, d_nlp->z, d_nlp->p, d_nlp->objective);
         m->arg[0] = d_nlp->z;
         m->arg[1] = d_nlp->p;
         m->res[0] = &d_nlp->objective;
