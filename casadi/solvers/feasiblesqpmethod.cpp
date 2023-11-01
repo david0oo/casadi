@@ -702,6 +702,7 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
 
   // p_tmp = p
   casadi_copy(d->dx, nx_, d->dx_feas);
+  DM(std::vector<double>(d->dx_feas,d->dx_feas+nx_)).to_file("dx.mtx");
 
 //   lam_p_g_tmp = self.lam_p_g_k
 //   lam_p_x_tmp = self.lam_p_x_k
@@ -1054,77 +1055,21 @@ int Feasiblesqpmethod::solve(void* mem) const {
     // MAIN OPTIMIZATION LOOP
     // ------------------------------------------------------------------------
     while (true) {
-      // Evaluate f, g and first order derivative information
-      /*m->arg[0] = d_nlp->z;
-      m->arg[1] = d_nlp->p;
-      m->res[0] = &d_nlp->objective;
-      m->res[1] = d->gf;
-      m->res[2] = d_nlp->z + nx_;
-      m->res[3] = d->Jk;
-      switch (calc_function(m, "nlp_jac_fg")) {
-        case -1:
-          m->return_status = "Non_Regular_Sensitivities";
-          m->unified_return_status = SOLVER_RET_NAN;
-          if (print_status_)
-            print("MESSAGE(tolerance-tube method): No regularity of sensitivities at current point.\n");
-          return 1;
-        case 0:
-          break;
-        default:
-          return 1;
-      }*/
-
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Evaluate the problem functions depending on step acceptance and rejectance
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       if (m->iter_count == 0) {
-        //Evaluate f
+        //Evaluate f and g function
         evaluate_f(m, d_nlp->z, d_nlp->p, d_nlp->objective);
-        // m->arg[0] = d_nlp->z;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = &d_nlp->objective;
-        // if (calc_function(m, "nlp_f")) {
-        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-        // }
-        // Evaluate g
         evaluate_g(m, d_nlp->z, d_nlp->p, d_nlp->z + nx_);
-        // m->arg[0] = d_nlp->z;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = d_nlp->z + nx_;
-        // if (calc_function(m, "nlp_g")) {
-        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-        // }
       }
 
       if (m->iter_count == 0 || step_accepted == 0) {
+        // Evaluate gradient of f and jacobian of g
         ret = evaluate_grad_f_jac_g(m, d_nlp->z, d_nlp->p, d->gf, d->Jk);
         if (ret != 0) {
           return 1;
         }
-        // // Evaluate grad_f
-        // m->arg[0] = d_nlp->z;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = d->gf;
-        // if (calc_function(m, "nlp_grad_f")) {
-        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-        // }
-        // // Evaluate jac_g
-        // m->arg[0] = d_nlp->z;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = d->Jk;
-        // switch (calc_function(m, "nlp_jac_g")) {
-        //   case -1:
-        //     m->return_status = "Non_Regular_Sensitivities";
-        //     m->unified_return_status = SOLVER_RET_NAN;
-        //     if (print_status_)
-        //       print("MESSAGE(tolerance-tube method): "
-        //             "No regularity of sensitivities at current point.\n");
-        //     return 1;
-        //   case 0:
-        //     break;
-        //   default:
-        //     return 1;
-        // }
 
         if (use_sqp_) {
           if (exact_hessian_) {
@@ -1229,7 +1174,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       // Initial guess
       casadi_copy(d_nlp->lam, nx_+ng_, d->dlam);
-      casadi_clear(d->dx, nx_);
+      // casadi_clear(d->dx, nx_);
 
 
       int ret = 0;
