@@ -433,7 +433,7 @@ In C++ and Python (but not in MATLAB), the standard multiplication operation (us
 As is customary in MATLAB, multiplication using ``*`` and ``.*`` are equivalent when either of the arguments is a scalar.
 
 **Transposes** are formed using the syntax ``A.T`` in Python, ``A.T()`` in C++ and with
-``A`` or ``A.'`` in MATLAB:
+``A'`` or ``A.'`` in MATLAB:
 
 .. side-by-side::
     .. exec-block:: python
@@ -529,7 +529,7 @@ There are also variants of these functions that take a list (in Python) or a cel
 
         x = SX.sym('x',5,2);
         w = horzsplit(x,[0,1,2]);
-        disp(w(1)), disp(w(2))
+        disp(w{1}), disp(w{2})
 
 The vertsplit operation works analogously, but with the *offset* vector referring to rows:
 
