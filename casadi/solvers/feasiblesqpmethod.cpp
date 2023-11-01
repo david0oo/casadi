@@ -1161,7 +1161,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // Primal infeasability
         m->primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
         m->dual_infeasibility = casadi_norm_inf(nx_, d->gLag);
-        uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
+        // uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
       
         // std::string x_iterate = "x_iterate" + std::to_string(m->iter_count) + ".mtx";
         // DM(std::vector<double>(d_nlp->z,d_nlp->z+nx_)).to_file(x_iterate);
