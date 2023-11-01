@@ -109,7 +109,7 @@ void casadi_feasiblesqpmethod_work(const casadi_feasiblesqpmethod_prob<T1>* p,
   *sz_w += nx; // gf_feas
   *sz_w += nx + ng; // lower bounds feasibile QP
   *sz_w += nx + ng; // upper bounds feasible QP
-  *sz_w += nx+ng; // x tmp feasible QP
+  *sz_w += sz_anderson_memory*nx+ng; // x tmp feasible QP
   *sz_w += nx; // tr_scale_vector
   *sz_iw += nx; // tr_mask
   // Hessian approximation
@@ -160,9 +160,6 @@ void casadi_feasiblesqpmethod_init(casadi_feasiblesqpmethod_data<T1>* d,
   // Lagrange gradient in the next iterate
   d->gLag = *w; *w += nx;
   d->gLag_old = *w; *w += nx;
-  // Hessian approximation
-  d->Bk = *w; *w += nnz_h;
-
   // Gradient of the objective
   d->gf = *w; *w += nx;
   // Bounds of the QP
@@ -185,8 +182,16 @@ void casadi_feasiblesqpmethod_init(casadi_feasiblesqpmethod_data<T1>* d,
   // trust-region scale vector
   d->tr_scale_vector = *w; *w += nx;
   d->tr_mask = *iw; *iw += nx;
+  // Hessian approximation
+  d->Bk = *w; *w += nnz_h;
   // Jacobian
   d->Jk = *w; *w += nnz_a;
+  if (sz_anderson_memory > 0) {
+    // Anderson vector
+    d->anderson_memory_step = *w; *w += sz_anderson_memory*nx;
+    d->anderson_memory_iterate = *w; *w += sz_anderson_memory*nx;
+    d->gamma = *w; *w += sz_anderson_memory;
+  }
   // Restoration
   d->gf_restoration = *w; *w += nx + 2*ng;
   d->lbdz_restoration = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
@@ -195,9 +200,6 @@ void casadi_feasiblesqpmethod_init(casadi_feasiblesqpmethod_data<T1>* d,
   d->dlam_restoration = *w; *w += nx + ng + 2*ng; // 2*ng for slack variables in restoration
   d->Jk_restoration = *w; *w += nnz_a + 2*ng; // 2*ng for slack variables in diagonal in restoration
   // d->temp_mem = *w; *w += ng; not sure if we need that
-  // Anderson vector
-  d->anderson_memory_step = *w; *w += sz_anderson_memory*nx;
-  d->anderson_memory_iterate = *w; *w += sz_anderson_memory*nx;
-  d->gamma = *w; *w += sz_anderson_memory;
+
 
 }
