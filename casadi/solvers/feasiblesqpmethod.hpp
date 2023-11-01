@@ -105,7 +105,11 @@ namespace casadi {
     void set_work(void* mem, const double**& arg, double**& res,
                           casadi_int*& iw, double*& w) const override;
 
-    void eval_f(FeasiblesqpmethodMemory* m, double* z, const double* p, double& output) const;
+    void evaluate_f(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double& output) const;
+
+    void evaluate_g(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double* output) const;
+    
+    int evaluate_grad_f_jac_g(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double* output_gradient, double* output_jacobian) const;
 
     double eval_m_k(void* mem) const;
 

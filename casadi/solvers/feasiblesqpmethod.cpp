@@ -376,23 +376,23 @@ namespace casadi {
       create_function("nlp_g", {"x", "p"},
                      {"g"});
     }
-    if (!has_function("nlp_jac_g")) {
-      create_function("nlp_jac_g", {"x", "p"},
-                     {"jac:g:x"});
+    // if (!has_function("nlp_jac_g")) {
+    //   create_function("nlp_jac_g", {"x", "p"},
+    //                  {"jac:g:x"});
+    // }
+    // if (!has_function("nlp_grad_f")) {
+    //   create_function("nlp_grad_f", {"x", "p"},
+    //                  {"grad:f:x"});
+    // }
+    // // Get sparsity pattern for A
+    // Asp_ = get_function("nlp_jac_g").sparsity_out(0);
+    
+    if (!has_function("nlp_grad_f_jac_g")) {
+      create_function("nlp_grad_f_jac_g", {"x", "p"},
+                     {"grad:f:x", "jac:g:x"});
     }
-    if (!has_function("nlp_grad_f")) {
-      create_function("nlp_grad_f", {"x", "p"},
-                     {"grad:f:x"});
-    }
-
-    // Get sparsity pattern for A and H
-    Asp_ = get_function("nlp_jac_g").sparsity_out(0);
-    /*
-    if (!has_function("nlp_jac_fg")) {
-      create_function("nlp_jac_fg", {"x", "p"},
-                     {"f", "grad:f:x", "g", "jac:g:x"});
-    }
-    Asp_ = get_function("nlp_jac_fg").sparsity_out(3);*/
+    Asp_ = get_function("nlp_grad_f_jac_g").sparsity_out(1);
+    
     if (use_sqp_) {
       if (exact_hessian_) {
         if (!has_function("nlp_hess_l")) {
@@ -444,7 +444,7 @@ namespace casadi {
     }
 
     alloc(qpsol_standard_);
-    qpsol_standard_.save("subproblem_solver.casadi");
+    // qpsol_standard_.save("subproblem_solver.casadi");
 
 
 
@@ -729,12 +729,13 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   // DM(std::vector<double>(d->z_feas,d->z_feas+nx_)).to_file("dx_anderson1.mtx");
   // Evaluate g
   //   self.g_tmp = self.__eval_g(self.x_tmp)
-  m->arg[0] = d->z_feas;
-  m->arg[1] = d_nlp->p;
-  m->res[0] = d->z_feas + nx_;
-  if (calc_function(m, "nlp_g")) {
-    uout() << "What does it mean that calc_function fails here??" << std::endl;
-  }
+  evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
+  // m->arg[0] = d->z_feas;
+  // m->arg[1] = d_nlp->p;
+  // m->res[0] = d->z_feas + nx_;
+  // if (calc_function(m, "nlp_g")) {
+  //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+  // }
   int inner_iter = 0;
 
 //   asymptotic_exactness = []
@@ -897,12 +898,13 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
     }
 
     // Evaluate g
-    m->arg[0] = d->z_feas;
-    m->arg[1] = d_nlp->p;
-    m->res[0] = d->z_feas + nx_;
-    if (calc_function(m, "nlp_g")) {
-      uout() << "What does it mean that calc_function fails here??" << std::endl;
-    }
+    evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
+    // m->arg[0] = d->z_feas;
+    // m->arg[1] = d_nlp->p;
+    // m->res[0] = d->z_feas + nx_;
+    // if (calc_function(m, "nlp_g")) {
+    //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+    // }
 
     //       self.current_infeasibility = self.feasibility_measure(self.x_tmp, self.g_tmp)
     //       self.previous_infeasibility = self.current_infeasibility
@@ -974,13 +976,42 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   return -1;
 }
 
-void Feasiblesqpmethod::eval_f(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double& output) const{
+void Feasiblesqpmethod::evaluate_f(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double& output) const{
   // Evaluate f
   m->arg[0] = input_z;
   m->arg[1] = parameter;
   m->res[0] = &output;
   if (calc_function(m, "nlp_f")) {
     uout() << "Evaluation error for f!!" << std::endl;
+  }
+}
+
+void Feasiblesqpmethod::evaluate_g(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double* output) const{
+  // Evaluate f
+  m->arg[0] = input_z;
+  m->arg[1] = parameter;
+  m->res[0] = output;
+  if (calc_function(m, "nlp_g")) {
+          uout() << "What does it mean that calc_function fails here??" << std::endl;
+  }
+}
+
+int Feasiblesqpmethod::evaluate_grad_f_jac_g(FeasiblesqpmethodMemory* m, double* input_z, const double* parameter, double* output_gradient, double* output_jacobian) const {
+  m->arg[0] = input_z;
+  m->arg[1] = parameter;
+  m->res[0] = output_gradient;
+  m->res[1] = output_jacobian;
+  switch (calc_function(m, "nlp_grad_f_jac_g")) {
+    case -1:
+      m->return_status = "Non_Regular_Sensitivities";
+      m->unified_return_status = SOLVER_RET_NAN;
+      if (print_status_)
+        print("MESSAGE(tolerance-tube method): No regularity of sensitivities at current point.\n");
+      return 1;
+    case 0:
+      return 0;
+    default:
+      return 1;
   }
 }
 
@@ -993,7 +1024,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
     // Number of SQP iterations
     m->iter_count = 0;
 
-    int step_accepted = 0;
+    int step_accepted = -1;
 
     // Default quadratic model value of objective
     double m_k = -1.0;
@@ -1017,6 +1048,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
     casadi_clear(d->dx, nx_);
 
+    int ret = 0;
     // Save initial guess
     // ------------------------------------------------------------------------
     // MAIN OPTIMIZATION LOOP
@@ -1047,7 +1079,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       if (m->iter_count == 0) {
         //Evaluate f
-        eval_f(m, d_nlp->z, d_nlp->p, d_nlp->objective);
+        evaluate_f(m, d_nlp->z, d_nlp->p, d_nlp->objective);
         // m->arg[0] = d_nlp->z;
         // m->arg[1] = d_nlp->p;
         // m->res[0] = &d_nlp->objective;
@@ -1055,39 +1087,44 @@ int Feasiblesqpmethod::solve(void* mem) const {
         //   uout() << "What does it mean that calc_function fails here??" << std::endl;
         // }
         // Evaluate g
-        m->arg[0] = d_nlp->z;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = d_nlp->z + nx_;
-        if (calc_function(m, "nlp_g")) {
-          uout() << "What does it mean that calc_function fails here??" << std::endl;
-        }
+        evaluate_g(m, d_nlp->z, d_nlp->p, d_nlp->z + nx_);
+        // m->arg[0] = d_nlp->z;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = d_nlp->z + nx_;
+        // if (calc_function(m, "nlp_g")) {
+        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+        // }
       }
 
       if (m->iter_count == 0 || step_accepted == 0) {
-        // Evaluate grad_f
-        m->arg[0] = d_nlp->z;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = d->gf;
-        if (calc_function(m, "nlp_grad_f")) {
-          uout() << "What does it mean that calc_function fails here??" << std::endl;
+        ret = evaluate_grad_f_jac_g(m, d_nlp->z, d_nlp->p, d->gf, d->Jk);
+        if (ret != 0) {
+          return 1;
         }
-        // Evaluate jac_g
-        m->arg[0] = d_nlp->z;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = d->Jk;
-        switch (calc_function(m, "nlp_jac_g")) {
-          case -1:
-            m->return_status = "Non_Regular_Sensitivities";
-            m->unified_return_status = SOLVER_RET_NAN;
-            if (print_status_)
-              print("MESSAGE(tolerance-tube method): "
-                    "No regularity of sensitivities at current point.\n");
-            return 1;
-          case 0:
-            break;
-          default:
-            return 1;
-        }
+        // // Evaluate grad_f
+        // m->arg[0] = d_nlp->z;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = d->gf;
+        // if (calc_function(m, "nlp_grad_f")) {
+        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+        // }
+        // // Evaluate jac_g
+        // m->arg[0] = d_nlp->z;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = d->Jk;
+        // switch (calc_function(m, "nlp_jac_g")) {
+        //   case -1:
+        //     m->return_status = "Non_Regular_Sensitivities";
+        //     m->unified_return_status = SOLVER_RET_NAN;
+        //     if (print_status_)
+        //       print("MESSAGE(tolerance-tube method): "
+        //             "No regularity of sensitivities at current point.\n");
+        //     return 1;
+        //   case 0:
+        //     break;
+        //   default:
+        //     return 1;
+        // }
 
         if (use_sqp_) {
           if (exact_hessian_) {
@@ -1124,10 +1161,12 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // Primal infeasability
         m->primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
         m->dual_infeasibility = casadi_norm_inf(nx_, d->gLag);
-        // uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
+        uout() << "x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
       
         // std::string x_iterate = "x_iterate" + std::to_string(m->iter_count) + ".mtx";
         // DM(std::vector<double>(d_nlp->z,d_nlp->z+nx_)).to_file(x_iterate);
+        // Reset the step acceptanc. Necessary such that derivatives are not always evaluated
+        step_accepted = -1;
       }
 
       // inf-norm of step, d->dx is a nullptr???
@@ -1195,13 +1234,19 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       int ret = 0;
       // Solve the LP
-      if (use_sqp_) {
-        ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
-                 d->dx, d->dlam);
+      if (m->primal_infeasibility > 100*tolerance_tube_beta_*tube_size) {
+        ret = -1;
       } else {
-        ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
-                 d->dx, d->dlam);
+        if (use_sqp_) {
+          ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
+                  d->dx, d->dlam);
+        } else {
+          ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
+                  d->dx, d->dlam);
+        }
+
       }
+
 
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
@@ -1292,21 +1337,24 @@ int Feasiblesqpmethod::solve(void* mem) const {
         casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
         casadi_axpy(nx_, 1., d->dx_restoration, d->z_feas);
         // eval g at this new iterate
+        // Evaluate g
         //   self.g_tmp = self.__eval_g(self.x_tmp)
-        m->arg[0] = d->z_feas;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = d->z_feas + nx_;
-        if (calc_function(m, "nlp_g")) {
-          uout() << "What does it mean that calc_function fails here??" << std::endl;
-        }
+        evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
+        // m->arg[0] = d->z_feas;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = d->z_feas + nx_;
+        // if (calc_function(m, "nlp_g")) {
+        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+        // }
 
         // Evaluate f
-        m->arg[0] = d->z_feas;
-        m->arg[1] = d_nlp->p;
-        m->res[0] = &d->f_feas;
-        if (calc_function(m, "nlp_f")) {
-          uout() << "What does it mean that calc_function fails here??" << std::endl;
-        }
+        evaluate_f(m, d->z_feas, d_nlp->p, d->f_feas);
+        // m->arg[0] = d->z_feas;
+        // m->arg[1] = d_nlp->p;
+        // m->res[0] = &d->f_feas;
+        // if (calc_function(m, "nlp_f")) {
+        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+        // }
 
         uout() << "step norm" << casadi_norm_1(nx_, d->dx_restoration) << std::endl;
         uout() << "trial iterate l1 norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
@@ -1356,20 +1404,22 @@ int Feasiblesqpmethod::solve(void* mem) const {
           casadi_axpy(nx_, 1., d->dx, d->z_feas);
           // eval g at this new iterate
           //   self.g_tmp = self.__eval_g(self.x_tmp)
-          m->arg[0] = d->z_feas;
-          m->arg[1] = d_nlp->p;
-          m->res[0] = d->z_feas + nx_;
-          if (calc_function(m, "nlp_g")) {
-            uout() << "What does it mean that calc_function fails here??" << std::endl;
-          }
+          evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
+          // m->arg[0] = d->z_feas;
+          // m->arg[1] = d_nlp->p;
+          // m->res[0] = d->z_feas + nx_;
+          // if (calc_function(m, "nlp_g")) {
+          //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+          // }
 
           // Evaluate f
-          m->arg[0] = d->z_feas;
-          m->arg[1] = d_nlp->p;
-          m->res[0] = &d->f_feas;
-          if (calc_function(m, "nlp_f")) {
-            uout() << "What does it mean that calc_function fails here??" << std::endl;
-          }
+          evaluate_f(m, d->z_feas, d_nlp->p, d->f_feas);
+          // m->arg[0] = d->z_feas;
+          // m->arg[1] = d_nlp->p;
+          // m->res[0] = &d->f_feas;
+          // if (calc_function(m, "nlp_f")) {
+          //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+          // }
 
           double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
 
@@ -1429,12 +1479,13 @@ int Feasiblesqpmethod::solve(void* mem) const {
             tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
           } else {
             // Evaluate f
-            m->arg[0] = d->z_feas;
-            m->arg[1] = d_nlp->p;
-            m->res[0] = &d->f_feas;
-            if (calc_function(m, "nlp_f")) {
-              uout() << "What does it mean that calc_function fails here??" << std::endl;
-            }
+            evaluate_f(m, d->z_feas, d_nlp->p, d->f_feas);
+            // m->arg[0] = d->z_feas;
+            // m->arg[1] = d_nlp->p;
+            // m->res[0] = &d->f_feas;
+            // if (calc_function(m, "nlp_f")) {
+            //   uout() << "What does it mean that calc_function fails here??" << std::endl;
+            // }
 
             ret = eval_switching_condition(m->primal_infeasibility, m_k);
             if (ret == 0){
@@ -1543,7 +1594,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
     m->res[CONIC_COST] = &obj;
 
     // Solve the LP/QP
-    Function temp = Function::load("subproblem_solver.casadi");
+    // Function temp = Function::load("subproblem_solver.casadi");
     qpsol_standard_(m->arg, m->res, m->iw, m->w, 0);
 
     if (qpsol_standard_.stats()["success"]){
