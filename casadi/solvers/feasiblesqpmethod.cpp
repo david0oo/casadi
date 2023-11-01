@@ -772,23 +772,23 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
   double watchdog_prev_inf_norm = prev_step_inf_norm; // until here everything is correct!
 
   for (int j=0; j<max_inner_iter_; ++j) {
-    // if (current_infeasibility <= tolerance_tube_beta_*tube_size) {
-    //   inner_iter = j;
-    //   // kappa_acceptance = true;
-    //   if (projection_ratio < 0.5) {
-    //     return 0;
-    //   } else {
-    //     return -1;
-    //   }
-    // } else if (j>0 && (current_infeasibility > 1.0 || projection_ratio > 1.0)) {
-    //   // kappa_acceptance = false;
-    //   return -1;
-    // }
     if (current_infeasibility <= tolerance_tube_beta_*tube_size) {
       inner_iter = j;
       // kappa_acceptance = true;
+      if (projection_ratio < 0.5) {
         return 0;
-    } 
+      } else {
+        return -1;
+      }
+    } else if (j>0 && (current_infeasibility > 1.0 || projection_ratio > 1.0)) {
+      // kappa_acceptance = false;
+      return -1;
+    }
+    // if (current_infeasibility <= tolerance_tube_beta_*tube_size) {
+    //   inner_iter = j;
+    //   // kappa_acceptance = true;
+    //     return 0;
+    // } 
     inner_iter = j+1;
 
     //       self.lam_tmp_g = self.lam_p_g_k
