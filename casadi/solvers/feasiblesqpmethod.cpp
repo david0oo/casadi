@@ -1336,11 +1336,11 @@ int Feasiblesqpmethod::solve(void* mem) const {
         //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         // Clean up the Lagrange multipliers
-        for (int i=0; i<nx_; ++i){
-          if (abs(d->dx[i]) == tr_rad){
-            d->dlam[i] = 0.0;
-          }
-        }
+        // for (int i=0; i<nx_; ++i){
+        //   if (abs(d->dx[i]) == tr_rad){
+        //     d->dlam[i] = 0.0;
+        //   }
+        // }
 
         if (m->primal_infeasibility > tolerance_tube_beta_*tube_size) {
           uout() << "Phase I" << std::endl;
