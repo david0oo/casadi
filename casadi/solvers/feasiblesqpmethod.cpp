@@ -432,8 +432,8 @@ namespace casadi {
       // cout << qpsol_ <<std::endl;
     } else {
       Hsp_ = Sparsity(nx_, nx_);
-      uout() << "Sparsity pattern: " << Hsp_ << std::endl;
-      uout() << "Sparsity pattern: " << Asp_ << std::endl;
+      // uout() << "Sparsity pattern: " << Hsp_ << std::endl;
+      // uout() << "Sparsity pattern: " << Asp_ << std::endl;
       // uout() << "Nonzeros: " << Hsp_.nnz() << std::endl;
       // qpsol_ = conic("qpsol", qpsol_plugin, {{"h", Hsp_}, {"a", Asp_}},
       //              qpsol_options);
@@ -528,17 +528,17 @@ double Feasiblesqpmethod::eval_m_k(void* mem) const {
 }
 
 double Feasiblesqpmethod::eval_tr_ratio(double val_f, double val_f_corr, double val_m_k) const {
-  uout() << "predicted reduction is here:" << -val_m_k << std::endl;
+  // uout() << "predicted reduction is here:" << -val_m_k << std::endl;
   return (val_f - val_f_corr) / (-val_m_k);
 }
 
 int Feasiblesqpmethod::eval_switching_condition(double current_infeasibility, double val_m_k) const {
-  uout() << "pred: " << (-val_m_k) << std::endl;
+  // uout() << "pred: " << (-val_m_k) << std::endl;
   if (-val_m_k >= 0.1 * current_infeasibility){
-    uout() << "Switching condition satisfied" << std::endl;
+    // uout() << "Switching condition satisfied" << std::endl;
     return 0;
   } else {
-    uout() << "Switching condition violated" << std::endl;
+    // uout() << "Switching condition violated" << std::endl;
     return 1;
   }
 }
@@ -557,8 +557,8 @@ void Feasiblesqpmethod::tr_update(void* mem, double& tr_rad, double tr_ratio, st
   }
 
   if (tr_ratio < tr_eta1_) {
-    uout() << "masked norm inf: " << casadi_masked_norm_inf(nx_, temp, d->tr_mask) << std::endl;
-    uout() << "new radius: " << tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask)<< std::endl;
+    // uout() << "masked norm inf: " << casadi_masked_norm_inf(nx_, temp, d->tr_mask) << std::endl;
+    // uout() << "new radius: " << tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask)<< std::endl;
     tr_rad = tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask);
   } else if (tr_ratio > tr_eta2_ &&
              abs(casadi_masked_norm_inf(nx_, temp, d->tr_mask) - tr_rad) < optimality_tol_) {
@@ -578,12 +578,12 @@ int Feasiblesqpmethod::step_update(void* mem, double tr_ratio) const {
     d_nlp->objective = d->f_feas;
     casadi_copy(d->dlam_feas, nx_ + ng_, d_nlp->lam);
 
-    uout() << "ACCEPTED" << std::endl;
+    // uout() << "ACCEPTED" << std::endl;
     // std::string x_iterate = "x_iterate" + std::to_string(m->iter_count) + ".mtx";
     // DM(std::vector<double>(d_nlp->z,d_nlp->z+nx_)).to_file(x_iterate);
     return 0;
   } else {
-    uout() << "REJECTED" << std::endl;
+    // uout() << "REJECTED" << std::endl;
     return -1;
   }
 }
@@ -866,7 +866,7 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
     }
 
     if (ret != 0){
-        std::cout << "Subproblem in feasibility iterations is not solved!" << std::endl;
+        // std::cout << "Subproblem in feasibility iterations is not solved!" << std::endl;
         return -1;
       }
 
@@ -949,7 +949,7 @@ int Feasiblesqpmethod::feasibility_iterations(void* mem, double tr_rad, double t
     if (inner_iter % watchdog_ == 0) {
       kappa_watchdog = step_inf_norm / watchdog_prev_inf_norm;
       watchdog_prev_inf_norm = step_inf_norm;
-      print("Kappa watchdog: %9.10f\n", kappa_watchdog);
+      // print("Kappa watchdog: %9.10f\n", kappa_watchdog);
       if (current_infeasibility <= tolerance_tube_beta_*tube_size && projection_ratio < 0.5) {
         // kappa_acceptance = true;
         return 0;
@@ -1179,18 +1179,18 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
       int ret = 0;
       // Solve the LP
-      if (m->primal_infeasibility > 100*tolerance_tube_beta_*tube_size) {
-        ret = -1;
+      // if (m->primal_infeasibility > 100*tolerance_tube_beta_*tube_size) {
+      //   ret = -1;
+      // } else {
+      if (use_sqp_) {
+        ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
+                d->dx, d->dlam);
       } else {
-        if (use_sqp_) {
-          ret = solve_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk,
-                  d->dx, d->dlam);
-        } else {
-          ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
-                  d->dx, d->dlam);
-        }
-
+        ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
+                d->dx, d->dlam);
       }
+
+      // }
 
 
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
@@ -1200,7 +1200,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
         // Restoration phase
         //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        uout() << "Restoration" << std::endl;
+        // uout() << "Restoration" << std::endl;
         if (m->primal_infeasibility <= feasibility_tol_) {
         if (print_status_) {
           print("MESSAGE(tolerancetube): Converged to feasible not optimal point.\n");
@@ -1261,11 +1261,11 @@ int Feasiblesqpmethod::solve(void* mem) const {
         int ret = solve_restoration_LP(m, d->gf_restoration,
                                         d->lbdz_restoration, d->ubdz_restoration, d->Jk_restoration, d->dx_restoration, d->dlam_restoration);
         if (ret == 0){
-          uout() << "Successful restoration LP!" << std::endl;
+          // uout() << "Successful restoration LP!" << std::endl;
         } else {
           throw std::runtime_error("Restoration LP was not solved succesfully!");
         }
-        uout() << "Norm_inf of dx_restoration: " << casadi_norm_inf(nx_, d->dx_restoration) << std::endl;
+        // uout() << "Norm_inf of dx_restoration: " << casadi_norm_inf(nx_, d->dx_restoration) << std::endl;
 
         if (casadi_norm_inf(nx_, d->dx_restoration) <= 1e-12){
           throw std::runtime_error("Restoration phase search direction is 0.");
@@ -1274,8 +1274,8 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // prepare step acceptance test
         // prepare trust-region ratio
         double l1_infeasibility_current_iterate = casadi_sum_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
-        uout() << "l1_violation current iterate: " << l1_infeasibility_current_iterate << std::endl;
-        uout() << "current iterate l1 norm" << casadi_norm_1(nx_, d_nlp->z) << std::endl;
+        // uout() << "l1_violation current iterate: " << l1_infeasibility_current_iterate << std::endl;
+        // uout() << "current iterate l1 norm" << casadi_norm_1(nx_, d_nlp->z) << std::endl;
 
         // Prepare trial iterate -----------
         // self.x_tmp = self.x_k + p_tmp
@@ -1301,17 +1301,17 @@ int Feasiblesqpmethod::solve(void* mem) const {
         //   uout() << "What does it mean that calc_function fails here??" << std::endl;
         // }
 
-        uout() << "step norm" << casadi_norm_1(nx_, d->dx_restoration) << std::endl;
-        uout() << "trial iterate l1 norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
+        // uout() << "step norm" << casadi_norm_1(nx_, d->dx_restoration) << std::endl;
+        // uout() << "trial iterate l1 norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
         double l1_infeasibility_trial_iterate = casadi_sum_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
         double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
-        uout() << "l1_violation current iterate: " << l1_infeasibility_trial_iterate << std::endl;
+        // uout() << "l1_violation current iterate: " << l1_infeasibility_trial_iterate << std::endl;
         double l1_infeasibility_linearized_step = casadi_sum(d->dx_restoration+nx_, 2*ng_);
         double ared = l1_infeasibility_current_iterate - l1_infeasibility_trial_iterate;
         double pred = l1_infeasibility_current_iterate - l1_infeasibility_linearized_step;
-        uout() << "pred: " << pred << std::endl;
+        // uout() << "pred: " << pred << std::endl;
         double tr_ratio_restoration = ared / pred;
-        uout() << "tr_ratio restoration: " << tr_ratio_restoration << std::endl;
+        // uout() << "tr_ratio restoration: " << tr_ratio_restoration << std::endl;
 
         tr_update(mem, tr_rad, tr_ratio_restoration, "restoration");
         // if (tr_rad < feasibility_tol_) {
@@ -1324,7 +1324,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
         step_accepted = step_update(mem, tr_ratio_restoration);
 
-        uout() << "Step accepted variable: " << step_accepted << std::endl;
+        // uout() << "Step accepted variable: " << step_accepted << std::endl;
 
         if (step_accepted == 0 && m->primal_infeasibility <= tolerance_tube_beta_*tube_size){
           tube_size = tolerance_tube_beta_*tube_size;
@@ -1343,7 +1343,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
         // }
 
         if (m->primal_infeasibility > tolerance_tube_beta_*tube_size) {
-          uout() << "Phase I" << std::endl;
+          // uout() << "Phase I" << std::endl;
           // x_trial = x_k + d_k
           casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
           casadi_axpy(nx_, 1., d->dx, d->z_feas);
@@ -1369,7 +1369,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
           double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
 
           double tr_ratio_phaseI = (m->primal_infeasibility - l_infty_infeasibility_trial_iterate) / m->primal_infeasibility;
-          uout() << "tr_ratio restoration: " << tr_ratio_phaseI << std::endl;
+          // uout() << "tr_ratio restoration: " << tr_ratio_phaseI << std::endl;
 
           tr_update(mem, tr_rad, tr_ratio_phaseI, "optimality");
           if (tr_rad < feasibility_tol_) {
@@ -1383,13 +1383,13 @@ int Feasiblesqpmethod::solve(void* mem) const {
           step_accepted = step_update(mem, tr_ratio_phaseI);
 
           if (step_accepted == 0){
-            uout() << "step accepted" << std::endl;
+            // uout() << "step accepted" << std::endl;
           } else {
-            uout() << "step rejected" << std::endl;
+            // uout() << "step rejected" << std::endl;
           }
 
         } else {
-          uout() << "Phase II" << std::endl;
+          // uout() << "Phase II" << std::endl;
           // DM(std::vector<double>(d->dx,d->dx+nx_)).to_file("dx_out.mtx");
           // Eval quadratic model and check for convergence
           m_k = eval_m_k(mem);
@@ -1403,7 +1403,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
             break;
           }
 
-          uout() << "norm inf step: " << casadi_norm_inf(nx_,d->dx) << std::endl;
+          // uout() << "norm inf step: " << casadi_norm_inf(nx_,d->dx) << std::endl;
           // uout() << "QP step: " << std::vector<double>(d->dx, d->dx+nx_) << std::endl;
           // Detecting indefiniteness
           if (use_sqp_) {
@@ -1418,7 +1418,7 @@ int Feasiblesqpmethod::solve(void* mem) const {
 
           // Check if step was accepted or not
           if (ret < 0) {
-            uout() << "Rejected inner iterates" << std::endl;
+            // uout() << "Rejected inner iterates" << std::endl;
             // uout() << casadi_masked_norm_inf(nx_, d->dx, d->tr_mask) << std::endl;
 
             tr_rad = 0.5 * casadi_masked_norm_inf(nx_, d->dx, d->tr_mask);
