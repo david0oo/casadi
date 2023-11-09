@@ -10,6 +10,7 @@ set(RUNTIME_SRC
   casadi_densify.hpp
   casadi_dot.hpp
   casadi_feasiblesqpmethod.hpp
+  casadi_tolerancetubemethod.hpp
   casadi_clear.hpp
   casadi_clip_min.hpp
   casadi_clip_max.hpp

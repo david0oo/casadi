@@ -295,6 +295,7 @@ namespace casadi {
   #include "casadi_nlp.hpp"
   #include "casadi_sqpmethod.hpp"
   #include "casadi_feasiblesqpmethod.hpp"
+  #include "casadi_tolerancetubemethod.hpp"
   #include "casadi_bfgs.hpp"
   #include "casadi_regularize.hpp"
   #include "casadi_newton.hpp"

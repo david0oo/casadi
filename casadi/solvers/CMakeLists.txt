@@ -71,6 +71,10 @@ casadi_plugin(Nlpsol sqpmethod
 casadi_plugin(Nlpsol feasiblesqpmethod
   feasiblesqpmethod.hpp feasiblesqpmethod.cpp feasiblesqpmethod_meta.cpp)
 
+# Tolerance-Tube SLPMethod -  An implementation of FP-SQP
+casadi_plugin(Nlpsol tolerancetubemethod
+  tolerancetubemethod.hpp tolerancetubemethod.cpp tolerancetubemethod_meta.cpp)
+
 # SCPgen -  An implementation of Lifted Newton SQP
 casadi_plugin(Nlpsol scpgen
   scpgen.hpp scpgen.cpp scpgen_meta.cpp)

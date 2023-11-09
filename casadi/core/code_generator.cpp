@@ -1319,6 +1319,11 @@ namespace casadi {
       add_auxiliary(AUX_NLP);
       this->auxiliaries << sanitize_source(casadi_feasiblesqpmethod_str, inst);
       break;
+    case AUX_TOLERANCETUBEMETHOD:
+      add_auxiliary(AUX_QP);
+      add_auxiliary(AUX_NLP);
+      this->auxiliaries << sanitize_source(casadi_tolerancetubemethod_str, inst);
+      break;
     case AUX_LDL:
       this->auxiliaries << sanitize_source(casadi_ldl_str, inst);
       break;

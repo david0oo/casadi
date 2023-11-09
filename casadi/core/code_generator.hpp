@@ -569,6 +569,7 @@ namespace casadi {
       AUX_NLP,
       AUX_SQPMETHOD,
       AUX_FEASIBLESQPMETHOD,
+      AUX_TOLERANCETUBEMETHOD,
       AUX_LDL,
       AUX_NEWTON,
       AUX_TO_DOUBLE,

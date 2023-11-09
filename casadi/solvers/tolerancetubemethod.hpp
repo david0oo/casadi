@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *    Copyright (C) 2022-2023 David Kiessling
  * 
@@ -24,24 +24,26 @@
  */
 
 
-#ifndef CASADI_FEASIBLESQPMETHOD_HPP
-#define CASADI_FEASIBLESQPMETHOD_HPP
+#ifndef CASADI_TOLERANCETUBEMETHOD_HPP
+#define CASADI_TOLERANCETUBEMETHOD_HPP
 
 #include "casadi/core/nlpsol_impl.hpp"
-#include <casadi/solvers/casadi_nlpsol_feasiblesqpmethod_export.h>
+#include <casadi/solvers/casadi_nlpsol_tolerancetubemethod_export.h>
 
-/** \defgroup plugin_Nlpsol_feasiblesqpmethod
- A textbook FeasibleSQPMethod
-*/
+/** \defgroup plugin_Nlpsol_tolerancetubemethod
+    \par
+ A textbook ToleranceTubeMethod
 
-/** \pluginsection{Nlpsol,feasiblesqpmethod} */
+    \identifier{241} */
+
+/** \pluginsection{Nlpsol,tolerancetubemethod} */
 
 /// \cond INTERNAL
 namespace casadi {
 
-  struct CASADI_NLPSOL_FEASIBLESQPMETHOD_EXPORT FeasiblesqpmethodMemory : public NlpsolMemory {
+  struct CASADI_NLPSOL_TOLERANCETUBEMETHOD_EXPORT ToleranceTubeMethodMemory : public NlpsolMemory {
     // Problem data structure
-    casadi_feasiblesqpmethod_data<double> d;
+    casadi_tolerancetubemethod_data<double> d;
     /// Hessian regularization
     double reg;
 
@@ -52,28 +54,30 @@ namespace casadi {
     /// Last return status
     const char* return_status;
 
+    double primal_infeasibility;
+    double dual_infeasibility;
     /// Iteration count
     int iter_count;
   };
 
-  /** \brief  \pluginbrief{Nlpsol,feasiblesqpmethod}
+  /** \brief  \pluginbrief{Nlpsol,tolerancetubemethod}
   *  @copydoc NLPSolver_doc
-  *  @copydoc plugin_Nlpsol_feasiblesqpmethod
+  *  @copydoc plugin_Nlpsol_tolerancetubemethod
   */
-  class CASADI_NLPSOL_FEASIBLESQPMETHOD_EXPORT Feasiblesqpmethod : public Nlpsol {
+  class CASADI_NLPSOL_TOLERANCETUBEMETHOD_EXPORT ToleranceTubeMethod : public Nlpsol {
   public:
-    explicit Feasiblesqpmethod(const std::string& name, const Function& nlp);
-    ~Feasiblesqpmethod() override;
+    explicit ToleranceTubeMethod(const std::string& name, const Function& nlp);
+    ~ToleranceTubeMethod() override;
 
     // Get name of the plugin
-    const char* plugin_name() const override { return "feasiblesqpmethod";}
+    const char* plugin_name() const override { return "tolerancetubemethod";}
 
     // Name of the class
-    std::string class_name() const override { return "Feasiblesqpmethod";}
+    std::string class_name() const override { return "ToleranceTubeMethod";}
 
     /** \brief  Create a new NLP Solver */
     static Nlpsol* creator(const std::string& name, const Function& nlp) {
-      return new Feasiblesqpmethod(name, nlp);
+      return new ToleranceTubeMethod(name, nlp);
     }
 
     ///@{
@@ -89,28 +93,36 @@ namespace casadi {
     void init(const Dict& opts) override;
 
     /** \brief Create memory block */
-    void* alloc_mem() const override { return new FeasiblesqpmethodMemory();}
+    void* alloc_mem() const override { return new ToleranceTubeMethodMemory();}
 
     /** \brief Initalize memory block */
     int init_mem(void* mem) const override;
 
     /** \brief Free memory block */
-    void free_mem(void *mem) const override { delete static_cast<FeasiblesqpmethodMemory*>(mem);}
+    void free_mem(void *mem) const override { delete static_cast<ToleranceTubeMethodMemory*>(mem);}
 
     /** \brief Set the (persistent) work vectors */
     void set_work(void* mem, const double**& arg, double**& res,
                           casadi_int*& iw, double*& w) const override;
 
+    void evaluate_f(ToleranceTubeMethodMemory* m, double* input_z, const double* parameter, double& output) const;
+
+    void evaluate_g(ToleranceTubeMethodMemory* m, double* input_z, const double* parameter, double* output) const;
+    
+    int evaluate_grad_f_jac_g(ToleranceTubeMethodMemory* m, double* input_z, const double* parameter, double* output_gradient, double* output_jacobian) const;
+
     double eval_m_k(void* mem) const;
 
     double eval_tr_ratio(double val_f, double val_f_corr, double val_m_k) const;
+    
+    int eval_switching_condition(double current_infeasibility, double val_m_k) const;
 
-    void tr_update(void* mem, double& tr_rad, double tr_ratio) const;
+    void tr_update(void* mem, double& tr_rad, double tr_ratio, std::string phase) const;
 
     int step_update(void* mem, double tr_ratio) const;
 
     // function to get feasible iterate
-    int feasibility_iterations(void* mem, double tr_rad) const;
+    int feasibility_iterations(void* mem, double tr_rad, double tube_size) const;
 
     void anderson_acc_step_update(void* mem, casadi_int iter_index) const;
 
@@ -122,18 +134,18 @@ namespace casadi {
     int solve(void* mem) const override;
 
     // Memory structure
-    casadi_feasiblesqpmethod_prob<double> p_;
+    casadi_tolerancetubemethod_prob<double> p_;
 
     /// QP solver for the subproblems
-    Function qpsol_;
+    Function qpsol_standard_;
 
-    /// QP solver for elastic mode subproblems
-    Function qpsol_ela_;
+    /// QP solver for restoration phase
+    Function qpsol_restoration_;
 
     /// Exact Hessian?
     bool exact_hessian_;
 
-    /// Exact Hessian?
+    /// Use SQP method?
     bool use_sqp_;
 
     /// Use Anderson Acceleration
@@ -157,14 +169,6 @@ namespace casadi {
     /// Initialize feasible qp's
     bool init_feasible_;
 
-    /// Linesearch parameters
-    ///@{
-    // double c1_;
-    // double beta_;
-    // casadi_int max_iter_ls_;
-    // casadi_int merit_memsize_;
-    ///@}
-
     // Print options
     bool print_header_, print_iteration_, print_status_;
 
@@ -183,8 +187,8 @@ namespace casadi {
     // -------- FROM HERE OPTIONS FOR FP-SQP ------------------
 
     // tolerances
-    double optimality_tol_, feasibility_tol_;
-
+    double optimality_tol_, feasibility_tol_, tolerance_tube_tol_;
+    double tolerance_tube_beta_;
     // trust-region parameters
     double tr_eta1_, tr_eta2_;
     double tr_alpha1_, tr_alpha2_;
@@ -208,7 +212,10 @@ namespace casadi {
     void codegen_declarations(CodeGenerator& g) const override;
 
     /// Access Conic
-    const Function getConic() const { return qpsol_;}
+    const Function getConic() const { return qpsol_standard_;}
+
+    /// Print iteration header
+    void print_header() const;
 
     /// Print iteration header
     void print_iteration() const;
@@ -220,16 +227,22 @@ namespace casadi {
                          std::string info) const;
 
     // Solve the QP subproblem: mode 0 = normal, mode 1 = SOC
-    virtual int solve_QP(FeasiblesqpmethodMemory* m, const double* H, const double* g,
+    virtual int solve_QP(ToleranceTubeMethodMemory* m, const double* H, const double* g,
                           const double* lbdz, const double* ubdz,
                           const double* A,
-                          double* x_opt, double* dlam, int mode) const;
+                          double* x_opt, double* dlam) const;
 
     // Solve the LP
-    virtual int solve_LP(FeasiblesqpmethodMemory* m, const double* g,
+    virtual int solve_LP(ToleranceTubeMethodMemory* m, const double* g,
                           const double* lbdz, const double* ubdz,
                           const double* A,
-                          double* x_opt, double* dlam, int mode) const;
+                          double* x_opt, double* dlam) const;
+
+    // Solve the restoration LP
+    virtual int solve_restoration_LP(ToleranceTubeMethodMemory* m, const double* g,
+                          const double* lbdz, const double* ubdz,
+                          const double* A,
+                          double* x_opt, double* dlam) const;
 
     // Solve the QP subproblem
     void codegen_qp_solve(CodeGenerator& cg, const std::string& H, const std::string& g,
@@ -253,7 +266,7 @@ namespace casadi {
 
     void codegen_step_update(CodeGenerator& cg, const std::string& tr_ratio) const;
 
-    void codegen_feasibility_iterations(CodeGenerator& cg, const std::string& tr_rad) const;
+    void codegen_feasibility_iterations(CodeGenerator& cg, const std::string& tr_rad, const std::string& tube_size) const;
 
     // Solve the QP subproblem
     // void codegen_qp_ela_solve(CodeGenerator& cg, const std::string& H, const std::string& g,
@@ -268,7 +281,7 @@ namespace casadi {
 
 
     // Calculate gamma_1
-    // double calc_gamma_1(FeasiblesqpmethodMemory* m) const;
+    // double calc_gamma_1(tolerancetubeMemory* m) const;
 
     /// A documentation string
     static const std::string meta_doc;
@@ -278,16 +291,16 @@ namespace casadi {
     void serialize_body(SerializingStream &s) const override;
 
     /** \brief Deserialize into MX */
-    static ProtoFunction* deserialize(DeserializingStream& s) { return new Feasiblesqpmethod(s); }
+    static ProtoFunction* deserialize(DeserializingStream& s) { return new ToleranceTubeMethod(s); }
 
   protected:
     /** \brief Deserializing constructor */
-    explicit Feasiblesqpmethod(DeserializingStream& s);
+    explicit ToleranceTubeMethod(DeserializingStream& s);
 
   private:
-    void set_feasiblesqpmethod_prob();
+    void set_tolerancetubemethod_prob();
   };
 
 } // namespace casadi
 /// \endcond
-#endif // CASADI_FEASIBLESQPMETHOD_HPP
+#endif // CASADI_TOLERANCETUBEMETHOD_HPP
