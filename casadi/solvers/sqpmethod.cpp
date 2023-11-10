@@ -322,7 +322,6 @@ void Sqpmethod::init(const Dict& opts) {
     alloc(qpsol_ela_);
   }
 
-
   // BFGS?
   if (!exact_hessian_) {
     alloc_w(2*nx_); // casadi_bfgs
@@ -330,20 +329,8 @@ void Sqpmethod::init(const Dict& opts) {
 
   // Header
   if (print_header_) {
-    print("-------------------------------------------\n");
-    print("This is casadi::Sqpmethod.\n");
-    if (exact_hessian_) {
-      print("Using exact Hessian\n");
-    } else {
-      print("Using limited memory BFGS Hessian approximation\n");
-    }
-    print("Number of variables:                       %9d\n", nx_);
-    print("Number of constraints:                     %9d\n", ng_);
-    print("Number of nonzeros in constraint Jacobian: %9d\n", Asp_.nnz());
-    print("Number of nonzeros in Lagrangian Hessian:  %9d\n", Hsp_.nnz());
-    print("\n");
+    print_header();
   }
-
 
   set_sqpmethod_prob();
   // Allocate memory
@@ -389,6 +376,62 @@ int Sqpmethod::init_mem(void* mem) const {
   return 0;
 }
 
+int Sqpmethod::evaluate_jac_fg(SqpmethodMemory* m, double* input_z, const double* parameter, double& output_f, double* output_gradient, double* output_g, double* output_jacobian) const {
+  m->arg[0] = input_z;
+  m->arg[1] = parameter;
+  m->res[0] = &output_f;
+  m->res[1] = output_gradient;
+  m->res[2] = output_g;
+  m->res[3] = output_jacobian;
+  switch (calc_function(m, "nlp_jac_fg")) {
+    case -1:
+      m->return_status = "Non_Regular_Sensitivities";
+      m->unified_return_status = SOLVER_RET_NAN;
+      if (print_status_)
+        print("MESSAGE(sqpmethod): No regularity of sensitivities at current point.\n");
+      return 1;
+    case 0:
+      return 0;
+    default:
+      return 1;
+  }
+}
+
+int Sqpmethod::evaluate_hessian(SqpmethodMemory* m, double* input_z, const double* parameter, double one, double* input_multiplier, double* output_hessian) const {
+  if (exact_hessian_) {
+    // Update/reset exact Hessian
+    m->arg[0] = input_z;
+    m->arg[1] = parameter;
+    m->arg[2] = &one;
+    m->arg[3] = input_multiplier;
+    m->res[0] = output_hessian;
+    if (calc_function(m, "nlp_hess_l")) return 1;
+    if (convexify_) {
+      ScopedTiming tic(m->fstats.at("convexify"));
+      if (convexify_eval(&convexify_data_.config, output_hessian, output_hessian, m->iw, m->w)) return 1;
+    }
+    return 0;
+  } else {
+    throw std::runtime_error("BFGS currently not implemented!");
+  }
+  // } else if (m->iter_count==0) {
+  //   ScopedTiming tic(m->fstats.at("BFGS"));
+  //   // Initialize BFGS
+  //   casadi_fill(output_hessian, Hsp_.nnz(), 1.);
+  //   casadi_bfgs_reset(Hsp_, output_hessian);
+  // } else {
+  //   ScopedTiming tic(m->fstats.at("BFGS"));
+  //   // Update BFGS
+  //   if (m->iter_count % lbfgs_memory_ == 0) casadi_bfgs_reset(Hsp_, output_hessian);
+  //   // Update the Hessian approximation
+  //   casadi_bfgs(Hsp_, output_hessian, d->dx, d->gLag, d->gLag_old, m->w);
+  // }
+}
+
+// ############################################################################
+// Main Optimization function
+// ############################################################################
+
 int Sqpmethod::solve(void* mem) const {
   auto m = static_cast<SqpmethodMemory*>(mem);
   auto d_nlp = &m->d_nlp;
@@ -417,6 +460,7 @@ int Sqpmethod::solve(void* mem) const {
   // For seeds
   const double one = 1.;
 
+  int ret = 0;
   // Info for printing
   std::string info = "";
 
@@ -431,34 +475,40 @@ int Sqpmethod::solve(void* mem) const {
   // MAIN OPTIMIZATION LOOP
   while (true) {
     // Evaluate f, g and first order derivative information
-    m->arg[0] = d_nlp->z;
-    m->arg[1] = d_nlp->p;
-    m->res[0] = &d_nlp->objective;
-    m->res[1] = d->gf;
-    m->res[2] = d_nlp->z + nx_;
-    m->res[3] = d->Jk;
-    switch (calc_function(m, "nlp_jac_fg")) {
-      case -1:
-        m->return_status = "Non_Regular_Sensitivities";
-        m->unified_return_status = SOLVER_RET_NAN;
-        if (print_status_)
-          print("MESSAGE(sqpmethod): No regularity of sensitivities at current point.\n");
-        return 1;
-      case 0:
-        break;
-      default:
-        return 1;
+    ret = evaluate_jac_fg(m, d_nlp->z, d_nlp->p, d_nlp->objective, d->gf, d_nlp->z + nx_, d->Jk);
+    if (ret != 0) {
+      std::cout << "Error in function evaluation" << std::endl;
+      return 1;
     }
-    // Evaluate the gradient of the Lagrangian
+    // m->arg[0] = d_nlp->z;
+    // m->arg[1] = d_nlp->p;
+    // m->res[0] = &d_nlp->objective;
+    // m->res[1] = d->gf;
+    // m->res[2] = d_nlp->z + nx_;
+    // m->res[3] = d->Jk;
+    // switch (calc_function(m, "nlp_jac_fg")) {
+    //   case -1:
+    //     m->return_status = "Non_Regular_Sensitivities";
+    //     m->unified_return_status = SOLVER_RET_NAN;
+    //     if (print_status_)
+    //       print("MESSAGE(sqpmethod): No regularity of sensitivities at current point.\n");
+    //     return 1;
+    //   case 0:
+    //     break;
+    //   default:
+    //     return 1;
+    // }
+
+    // Calculate the gradient of the Lagrangian
     casadi_copy(d->gf, nx_, d->gLag);
     casadi_mv(d->Jk, Asp_, d_nlp->lam+nx_, d->gLag, true);
     casadi_axpy(nx_, 1., d_nlp->lam, d->gLag);
 
     // Primal infeasability
-    double pr_inf = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
+    m->primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
 
     // inf-norm of Lagrange gradient
-    double du_inf = casadi_norm_inf(nx_, d->gLag);
+    m->dual_infeasibility = casadi_norm_inf(nx_, d->gLag);
 
     // inf-norm of step
     double dx_norminf = casadi_norm_inf(nx_, d->dx);
@@ -466,11 +516,12 @@ int Sqpmethod::solve(void* mem) const {
     // Printing information about the actual iterate
     if (print_iteration_) {
       if (m->iter_count % 10 == 0) print_iteration();
-      print_iteration(m->iter_count, d_nlp->objective, pr_inf, du_inf, dx_norminf,
+      print_iteration(m->iter_count, d_nlp->objective, m->primal_infeasibility, m->dual_infeasibility, dx_norminf,
                       m->reg, ls_iter, ls_success, so_succes, info);
       info = "";
       so_succes = false;
     }
+
 
     // Callback function
     if (callback(m)) {
@@ -480,7 +531,7 @@ int Sqpmethod::solve(void* mem) const {
     }
 
     // Checking convergence criteria
-    if (m->iter_count >= min_iter_ && pr_inf < tol_pr_ && du_inf < tol_du_) {
+    if (m->iter_count >= min_iter_ && m->primal_infeasibility < tol_pr_ && m->dual_infeasibility < tol_du_) {
       if (print_status_)
         print("MESSAGE(sqpmethod): Convergence achieved after %d iterations\n", m->iter_count);
       m->return_status = "Solve_Succeeded";
@@ -489,6 +540,7 @@ int Sqpmethod::solve(void* mem) const {
       break;
     }
 
+    // Check max iterations exceeded
     if (m->iter_count >= max_iter_) {
       if (print_status_) print("MESSAGE(sqpmethod): Maximum number of iterations reached.\n");
       m->return_status = "Maximum_Iterations_Exceeded";
@@ -496,6 +548,7 @@ int Sqpmethod::solve(void* mem) const {
       break;
     }
 
+    // Check if search direction gets too small, but then we should invoke a recovery procedure
     if (m->iter_count >= 1 && m->iter_count >= min_iter_ && dx_norminf <= min_step_size_) {
       if (print_status_) print("MESSAGE(sqpmethod): Search direction becomes too small without "
             "convergence criteria being met.\n");
@@ -503,30 +556,7 @@ int Sqpmethod::solve(void* mem) const {
       break;
     }
 
-    if (exact_hessian_) {
-      // Update/reset exact Hessian
-      m->arg[0] = d_nlp->z;
-      m->arg[1] = d_nlp->p;
-      m->arg[2] = &one;
-      m->arg[3] = d_nlp->lam + nx_;
-      m->res[0] = d->Bk;
-      if (calc_function(m, "nlp_hess_l")) return 1;
-      if (convexify_) {
-        ScopedTiming tic(m->fstats.at("convexify"));
-        if (convexify_eval(&convexify_data_.config, d->Bk, d->Bk, m->iw, m->w)) return 1;
-      }
-    } else if (m->iter_count==0) {
-      ScopedTiming tic(m->fstats.at("BFGS"));
-      // Initialize BFGS
-      casadi_fill(d->Bk, Hsp_.nnz(), 1.);
-      casadi_bfgs_reset(Hsp_, d->Bk);
-    } else {
-      ScopedTiming tic(m->fstats.at("BFGS"));
-      // Update BFGS
-      if (m->iter_count % lbfgs_memory_ == 0) casadi_bfgs_reset(Hsp_, d->Bk);
-      // Update the Hessian approximation
-      casadi_bfgs(Hsp_, d->Bk, d->dx, d->gLag, d->gLag_old, m->w);
-    }
+    ret = evaluate_hessian(m, d_nlp->z, d_nlp->p, one, d_nlp->lam+nx_, d->Bk);
 
     // Formulate the QP
     casadi_copy(d_nlp->lbz, nx_+ng_, d->lbdz);
@@ -562,7 +592,7 @@ int Sqpmethod::solve(void* mem) const {
           gamma_1 = calc_gamma_1(m);
         }
         ret = solve_elastic_mode(m, &ela_it, gamma_1, ls_iter, ls_success, so_succes,
-          pr_inf, du_inf, dx_norminf, &info, 0);
+          m->primal_infeasibility, m->dual_infeasibility, dx_norminf, &info, 0);
 
         if (ret == SOLVER_RET_INFEASIBLE) continue;
       } else if (ela_it == -1) {
@@ -572,7 +602,7 @@ int Sqpmethod::solve(void* mem) const {
         if (pi_inf > gamma_1) {
           ela_it = 0;
           ret = solve_elastic_mode(m, &ela_it, gamma_1, ls_iter, ls_success, so_succes,
-            pr_inf, du_inf, dx_norminf, &info, 0);
+            m->primal_infeasibility, m->dual_infeasibility, dx_norminf, &info, 0);
           if (ret == SOLVER_RET_INFEASIBLE) continue;
         }
       }
@@ -664,7 +694,7 @@ int Sqpmethod::solve(void* mem) const {
         }
 
         ret = solve_elastic_mode(m, &ela_it, gamma_1, ls_iter, ls_success, so_succes,
-          pr_inf, du_inf, dx_norminf, &info, 1);
+          m->primal_infeasibility, m->dual_infeasibility, dx_norminf, &info, 1);
 
       }
 
@@ -802,17 +832,36 @@ int Sqpmethod::solve(void* mem) const {
   return 0;
 }
 
+// ############################################################################
+// Printing functions
+// ############################################################################
+
+void Sqpmethod::print_header() const {
+  print("-------------------------------------------\n");
+  print("This is casadi::Sqpmethod.\n");
+  if (exact_hessian_) {
+    print("Using exact Hessian\n");
+  } else {
+    print("Using limited memory BFGS Hessian approximation\n");
+  }
+  print("Number of variables:                       %9d\n", nx_);
+  print("Number of constraints:                     %9d\n", ng_);
+  print("Number of nonzeros in constraint Jacobian: %9d\n", Asp_.nnz());
+  print("Number of nonzeros in Lagrangian Hessian:  %9d\n", Hsp_.nnz());
+  print("\n");
+}
+
 void Sqpmethod::print_iteration() const {
   print("%4s %14s %9s %9s %9s %7s %2s %7s\n", "iter", "objective", "inf_pr",
         "inf_du", "||d||", "lg(rg)", "ls", "info");
 }
 
 void Sqpmethod::print_iteration(casadi_int iter, double obj,
-                                double pr_inf, double du_inf,
+                                double primal_infeasibility, double dual_infeasibility,
                                 double dx_norm, double rg,
                                 casadi_int ls_trials, bool ls_success,
                                 bool so_succes, std::string info) const {
-  print("%4d %14.6e %9.2e %9.2e %9.2e ", iter, obj, pr_inf, du_inf, dx_norm);
+  print("%4d %14.6e %9.2e %9.2e %9.2e ", iter, obj, primal_infeasibility, dual_infeasibility, dx_norm);
   if (rg>0) {
     print("%7.2f ", log10(rg));
   } else {
@@ -834,6 +883,10 @@ void Sqpmethod::print_iteration(casadi_int iter, double obj,
   print(info.c_str());
   print("\n");
 }
+
+// ############################################################################
+// Solve QP functions
+// ############################################################################
 
 int Sqpmethod::solve_QP(SqpmethodMemory* m, const double* H, const double* g,
     const double* lbdz, const double* ubdz, const double* A,
@@ -919,8 +972,8 @@ int Sqpmethod::solve_ela_QP(SqpmethodMemory* m, const double* H, const double* g
 
 int Sqpmethod::solve_elastic_mode(SqpmethodMemory* m,
     casadi_int* ela_it, double gamma_1,
-    casadi_int ls_iter, bool ls_success, bool so_succes, double pr_inf,
-    double du_inf, double dx_norminf, std::string* info, int mode) const {
+    casadi_int ls_iter, bool ls_success, bool so_succes, double primal_infeasibility,
+    double dual_infeasibility, double dx_norminf, std::string* info, int mode) const {
   auto d_nlp = &m->d_nlp;
   auto d = &m->d;
 
@@ -964,7 +1017,7 @@ int Sqpmethod::solve_elastic_mode(SqpmethodMemory* m,
   if (mode == 0 && print_iteration_) {
     ls_iter = 0;
     ls_success = true;
-    print_iteration(m->iter_count, d_nlp->objective, pr_inf, du_inf, dx_norminf,
+    print_iteration(m->iter_count, d_nlp->objective, primal_infeasibility, dual_infeasibility, dx_norminf,
                     m->reg, ls_iter, ls_success, so_succes, *info);
   }
 
@@ -1013,6 +1066,22 @@ double Sqpmethod::calc_gamma_1(SqpmethodMemory* m) const {
   auto d = &m->d;
   return std::max(gamma_0_*casadi_norm_inf(nx_, d->gf), gamma_1_min_);
 }
+
+// ############################################################################
+// Statistics functions
+// ############################################################################
+
+Dict Sqpmethod::get_stats(void* mem) const {
+  Dict stats = Nlpsol::get_stats(mem);
+  auto m = static_cast<SqpmethodMemory*>(mem);
+  stats["return_status"] = m->return_status;
+  stats["iter_count"] = m->iter_count;
+  return stats;
+}
+
+// ############################################################################
+// Codegen functions
+// ############################################################################
 
 void Sqpmethod::codegen_declarations(CodeGenerator& g) const {
   if (max_iter_ls_ || so_corr_) g.add_dependency(get_function("nlp_fg"));
@@ -1108,17 +1177,17 @@ void Sqpmethod::codegen_body(CodeGenerator& g) const {
   g << g.mv("d.Jk", Asp_, "d_nlp.lam+"+str(nx_), "d.gLag", true) << "\n";
   g << g.axpy(nx_, "1.0", "d_nlp.lam", "d.gLag") << "\n";
   g.comment("Primal infeasability");
-  g.local("pr_inf", "casadi_real");
-  g << "pr_inf = " << g.max_viol(nx_+ng_, "d_nlp.z", "d_nlp.lbz", "d_nlp.ubz") << ";\n";
+  g.local("primal_infeasibility", "casadi_real");
+  g << "primal_infeasibility = " << g.max_viol(nx_+ng_, "d_nlp.z", "d_nlp.lbz", "d_nlp.ubz") << ";\n";
   g.comment("inf-norm of lagrange gradient");
-  g.local("du_inf", "casadi_real");
-  g << "du_inf = " << g.norm_inf(nx_, "d.gLag") << ";\n";
+  g.local("dual_infeasibility", "casadi_real");
+  g << "dual_infeasibility = " << g.norm_inf(nx_, "d.gLag") << ";\n";
   g.comment("inf-norm of step");
   g.local("dx_norminf", "casadi_real");
   g << "dx_norminf = " << g.norm_inf(nx_, "d.dx") << ";\n";
   g.comment("Checking convergence criteria");
-  g << "if (iter_count >= " << min_iter_ << " && pr_inf < " << tol_pr_ <<
-        " && du_inf < " << tol_du_ << ") break;\n";
+  g << "if (iter_count >= " << min_iter_ << " && primal_infeasibility < " << tol_pr_ <<
+        " && dual_infeasibility < " << tol_du_ << ") break;\n";
   g << "if (iter_count >= " << max_iter_ << ") break;\n";
   g << "if (iter_count >= 1 && iter_count >= " << min_iter_ << " && dx_norminf <= " <<
         min_step_size_ << ") break;\n";
@@ -1538,13 +1607,9 @@ void Sqpmethod::codegen_calc_gamma_1(CodeGenerator& cg) const {
   cg << "gamma_1 = " << cg.fmax("temp_norm", str(gamma_1_min_)) << ";\n";
 }
 
-Dict Sqpmethod::get_stats(void* mem) const {
-  Dict stats = Nlpsol::get_stats(mem);
-  auto m = static_cast<SqpmethodMemory*>(mem);
-  stats["return_status"] = m->return_status;
-  stats["iter_count"] = m->iter_count;
-  return stats;
-}
+// ############################################################################
+// Serializing functions
+// ############################################################################
 
 Sqpmethod::Sqpmethod(DeserializingStream& s) : Nlpsol(s) {
   int version = s.version("Sqpmethod", 1, 3);

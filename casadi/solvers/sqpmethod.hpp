@@ -56,6 +56,12 @@ namespace casadi {
 
     /// Iteration count
     int iter_count;
+
+    /// Primal infeasibility
+    double primal_infeasibility;
+
+    /// Dual infeasibility
+    double dual_infeasibility;
   };
 
   /** \brief  \pluginbrief{Nlpsol,sqpmethod}
@@ -102,6 +108,12 @@ namespace casadi {
     /** \brief Set the (persistent) work vectors */
     void set_work(void* mem, const double**& arg, double**& res,
                           casadi_int*& iw, double*& w) const override;
+
+    // Evaluate the f,g functions and their gradient or jacobian
+    int evaluate_jac_fg(SqpmethodMemory* m, double* input_z, const double* parameter, double& output_f, double* output_gradient, double* output_g, double* output_jacobian) const;
+    
+    // Evaluate Hessian matrix
+    int evaluate_hessian(SqpmethodMemory* m, double* input_z, const double* parameter, double one, double* multiplier, double* output_hessian) const;
 
     // Solve the NLP
     int solve(void* mem) const override;
@@ -176,6 +188,9 @@ namespace casadi {
 
     /// Access Conic
     const Function getConic() const { return qpsol_;}
+
+    /// Print iteration header
+    void print_header() const;
 
     /// Print iteration header
     void print_iteration() const;
