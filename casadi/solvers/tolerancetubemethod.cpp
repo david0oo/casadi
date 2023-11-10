@@ -39,8 +39,6 @@
 #include <signal.h>
 
 namespace casadi {
-
-
   extern "C"
   int CASADI_NLPSOL_TOLERANCETUBEMETHOD_EXPORT
       casadi_register_nlpsol_tolerancetubemethod(Nlpsol::Plugin* plugin) {
@@ -58,10 +56,12 @@ namespace casadi {
     Nlpsol::registerPlugin(casadi_register_nlpsol_tolerancetubemethod);
   }
 
+  // Constructor
   ToleranceTubeMethod::ToleranceTubeMethod(const std::string& name, const Function& nlp)
     : Nlpsol(name, nlp) {
   }
 
+  // Destructor
   ToleranceTubeMethod::~ToleranceTubeMethod() {
     clear_mem();
   }
@@ -557,8 +557,6 @@ void ToleranceTubeMethod::tr_update(void* mem, double& tr_rad, double tr_ratio, 
   }
 
   if (tr_ratio < tr_eta1_) {
-    // uout() << "masked norm inf: " << casadi_masked_norm_inf(nx_, temp, d->tr_mask) << std::endl;
-    // uout() << "new radius: " << tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask)<< std::endl;
     tr_rad = tr_alpha1_ * casadi_masked_norm_inf(nx_, temp, d->tr_mask);
   } else if (tr_ratio > tr_eta2_ &&
              abs(casadi_masked_norm_inf(nx_, temp, d->tr_mask) - tr_rad) < optimality_tol_) {
@@ -601,7 +599,6 @@ void ToleranceTubeMethod::anderson_acc_step_update(void* mem, casadi_int iter_in
     casadi_axpy(nx_, -1.0, d->anderson_memory_step, d->z_tmp);
     *d->gamma = casadi_dot(nx_, d->dx_feas, d->z_tmp) / casadi_dot(nx_, d->z_tmp, d->z_tmp);
     // DM(gamma).to_file("gamma.mtx");
-
 
     // Prepare the step update
     casadi_copy(d->z_feas, nx_, d->z_tmp);
@@ -1176,7 +1173,6 @@ int ToleranceTubeMethod::solve(void* mem) const {
       casadi_copy(d_nlp->lam, nx_+ng_, d->dlam);
       // casadi_clear(d->dx, nx_);
 
-
       int ret = 0;
       // Solve the LP
       // if (m->primal_infeasibility > 100*tolerance_tube_beta_*tube_size) {
@@ -1191,8 +1187,6 @@ int ToleranceTubeMethod::solve(void* mem) const {
       }
 
       // }
-
-
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
@@ -1285,21 +1279,9 @@ int ToleranceTubeMethod::solve(void* mem) const {
         // Evaluate g
         //   self.g_tmp = self.__eval_g(self.x_tmp)
         evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
-        // m->arg[0] = d->z_feas;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = d->z_feas + nx_;
-        // if (calc_function(m, "nlp_g")) {
-        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-        // }
 
         // Evaluate f
         evaluate_f(m, d->z_feas, d_nlp->p, d->f_feas);
-        // m->arg[0] = d->z_feas;
-        // m->arg[1] = d_nlp->p;
-        // m->res[0] = &d->f_feas;
-        // if (calc_function(m, "nlp_f")) {
-        //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-        // }
 
         // uout() << "step norm" << casadi_norm_1(nx_, d->dx_restoration) << std::endl;
         // uout() << "trial iterate l1 norm" << casadi_norm_1(nx_, d->z_feas) << std::endl;
@@ -1347,24 +1329,10 @@ int ToleranceTubeMethod::solve(void* mem) const {
           // x_trial = x_k + d_k
           casadi_copy(d_nlp->z, nx_+ng_, d->z_feas);
           casadi_axpy(nx_, 1., d->dx, d->z_feas);
-          // eval g at this new iterate
-          //   self.g_tmp = self.__eval_g(self.x_tmp)
-          evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
-          // m->arg[0] = d->z_feas;
-          // m->arg[1] = d_nlp->p;
-          // m->res[0] = d->z_feas + nx_;
-          // if (calc_function(m, "nlp_g")) {
-          //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-          // }
 
-          // Evaluate f
+          // Evaluate f and g
+          evaluate_g(m, d->z_feas, d_nlp->p, d->z_feas + nx_);
           evaluate_f(m, d->z_feas, d_nlp->p, d->f_feas);
-          // m->arg[0] = d->z_feas;
-          // m->arg[1] = d_nlp->p;
-          // m->res[0] = &d->f_feas;
-          // if (calc_function(m, "nlp_f")) {
-          //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-          // }
 
           double l_infty_infeasibility_trial_iterate = casadi_max_viol(nx_+ng_, d->z_feas, d_nlp->lbz, d_nlp->ubz);
 
@@ -1425,12 +1393,6 @@ int ToleranceTubeMethod::solve(void* mem) const {
           } else {
             // Evaluate f
             evaluate_f(m, d->z_feas, d_nlp->p, d->f_feas);
-            // m->arg[0] = d->z_feas;
-            // m->arg[1] = d_nlp->p;
-            // m->res[0] = &d->f_feas;
-            // if (calc_function(m, "nlp_f")) {
-            //   uout() << "What does it mean that calc_function fails here??" << std::endl;
-            // }
 
             ret = eval_switching_condition(m->primal_infeasibility, m_k);
             if (ret == 0){
@@ -1615,7 +1577,6 @@ int ToleranceTubeMethod::solve(void* mem) const {
     double obj;
     m->res[CONIC_COST] = &obj;
     // m->res[CONIC_COST] = nullptr;
-
 
     // Solve the LP/QP
     qpsol_standard_(m->arg, m->res, m->iw, m->w, 0);
