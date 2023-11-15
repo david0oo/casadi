@@ -3161,7 +3161,6 @@ class Functiontests(casadiTestCase):
 
     solver = nlpsol("solver","ipopt",nlp)
    
-<<<<<<< HEAD
   def test_fmu(self):
   
     
@@ -3199,7 +3198,6 @@ class Functiontests(casadiTestCase):
     self.checkfunction(daefun,daefun_ref,inputs=[vertcat(1.07,0.3),0.11],hessian=False,evals=1)
     self.checkfunction(daefun,daefun_ref,inputs=[vertcat(1.03,0.07),0.13],hessian=False,evals=1)
 
-=======
   def test_which_depends(self):
     x = SX.sym("x",2)
     y = SX.sym("y",2)
@@ -3248,6 +3246,5 @@ class Functiontests(casadiTestCase):
     F,_ = self.check_codegen(f,inputs=[DM.rand(f.sparsity_in(i)) for i in range(f.n_in())],with_jac_sparsity=True,with_forward=True)
     mychecks(F,exempt=True)
     
->>>>>>> casadi_original/main
 if __name__ == '__main__':
     unittest.main()

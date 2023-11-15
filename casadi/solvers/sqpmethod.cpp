@@ -63,6 +63,10 @@ Sqpmethod::~Sqpmethod() {
   clear_mem();
 }
 
+// ############################################################################
+// Initialization of solver functions: Options, memory, etc...
+// ############################################################################
+
 const Options Sqpmethod::options_
 = {{&Nlpsol::options_},
     {{"qpsol",
@@ -376,6 +380,10 @@ int Sqpmethod::init_mem(void* mem) const {
   return 0;
 }
 
+// ############################################################################
+// Function Evaluation functions
+// ############################################################################
+
 int Sqpmethod::evaluate_jac_fg(SqpmethodMemory* m, double* input_z, const double* parameter, double& output_f, double* output_gradient, double* output_g, double* output_jacobian) const {
   m->arg[0] = input_z;
   m->arg[1] = parameter;
@@ -426,6 +434,13 @@ int Sqpmethod::evaluate_hessian(SqpmethodMemory* m, double* input_z, const doubl
   //   // Update the Hessian approximation
   //   casadi_bfgs(Hsp_, output_hessian, d->dx, d->gLag, d->gLag_old, m->w);
   // }
+}
+
+void Sqpmethod::calculate_gradient_lagrangian(SqpmethodMemory* m, double* output_vector) const {
+  // do stuff
+  casadi_copy(m->d.gf, nx_, m->d.gLag);
+  casadi_mv(m->d.Jk, Asp_, m->d_nlp.lam+nx_, m->d.gLag, true);
+  casadi_axpy(nx_, 1., m->d_nlp.lam, m->d.gLag);
 }
 
 // ############################################################################
@@ -500,9 +515,7 @@ int Sqpmethod::solve(void* mem) const {
     // }
 
     // Calculate the gradient of the Lagrangian
-    casadi_copy(d->gf, nx_, d->gLag);
-    casadi_mv(d->Jk, Asp_, d_nlp->lam+nx_, d->gLag, true);
-    casadi_axpy(nx_, 1., d_nlp->lam, d->gLag);
+    calculate_gradient_lagrangian(m, d->gLag);
 
     // Primal infeasability
     m->primal_infeasibility = casadi_max_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz);
@@ -521,6 +534,8 @@ int Sqpmethod::solve(void* mem) const {
       info = "";
       so_succes = false;
     }
+
+
 
 
     // Callback function
@@ -557,6 +572,10 @@ int Sqpmethod::solve(void* mem) const {
     }
 
     ret = evaluate_hessian(m, d_nlp->z, d_nlp->p, one, d_nlp->lam+nx_, d->Bk);
+  	if (ret != 0) {
+      std::cout << "Error in function evaluation" << std::endl;
+      return 1;
+    }
 
     // Formulate the QP
     casadi_copy(d_nlp->lbz, nx_+ng_, d->lbdz);
@@ -817,15 +836,13 @@ int Sqpmethod::solve(void* mem) const {
 
     if (!exact_hessian_) {
       // Evaluate the gradient of the Lagrangian with the old x but new lam (for BFGS)
-      casadi_copy(d->gf, nx_, d->gLag_old);
-      casadi_mv(d->Jk, Asp_, d_nlp->lam+nx_, d->gLag_old, true);
-      casadi_axpy(nx_, 1., d_nlp->lam, d->gLag_old);
+      calculate_gradient_lagrangian(m, d->gLag_old);
     }
 
     // If linesearch failed enter elastic mode
     if (!ls_success && elastic_mode_ && (max_iter_ls_>0) && ela_it == -1) {
       ela_it = 0;
-      gamma_1 = calc_gamma_1(m);;
+      gamma_1 = calc_gamma_1(m);
     }
   }
 

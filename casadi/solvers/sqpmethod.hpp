@@ -115,6 +115,9 @@ namespace casadi {
     // Evaluate Hessian matrix
     int evaluate_hessian(SqpmethodMemory* m, double* input_z, const double* parameter, double one, double* multiplier, double* output_hessian) const;
 
+    // Evaluate the gradient of the lagrangian
+    void calculate_gradient_lagrangian(SqpmethodMemory* m, double* output_vector) const;
+
     // Solve the NLP
     int solve(void* mem) const override;
 
@@ -232,7 +235,6 @@ namespace casadi {
 
     // Codegen to calculate gama_1
     void codegen_calc_gamma_1(CodeGenerator& cg) const;
-
 
     // Calculate gamma_1
     double calc_gamma_1(SqpmethodMemory* m) const;
