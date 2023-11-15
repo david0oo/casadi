@@ -57,6 +57,8 @@ namespace casadi {
     /// Iteration count
     int iter_count;
 
+    double funnel_size;
+
     /// Primal infeasibility
     double primal_infeasibility;
 
@@ -127,8 +129,8 @@ namespace casadi {
     /// QP solver for the subproblems
     Function qpsol_;
 
-    /// QP solver for elastic mode subproblems
-    Function qpsol_ela_;
+    /// QP solver for phase I subproblems
+    Function qp_solver_phaseI_;
 
     /// Exact Hessian?
     bool exact_hessian_;
@@ -203,6 +205,9 @@ namespace casadi {
       double dx_norm, double rg, casadi_int ls_trials, bool ls_success,
       bool so_succes, std::string info) const;
 
+    /// Check termination criteria
+    int check_termination(SqpmethodMemory* m, double dx_norminf) const;
+
     // Solve the QP subproblem: mode 0 = normal, mode 1 = SOC
     virtual int solve_QP(SqpmethodMemory* m, const double* H, const double* g,
       const double* lbdz, const double* ubdz,
@@ -210,7 +215,7 @@ namespace casadi {
       double* x_opt, double* dlam, int mode) const;
 
     // Solve the QP subproblem for elastic mode
-    virtual int solve_ela_QP(SqpmethodMemory* m, const double* H, const double* g,
+    virtual int solve_phaseI_QP(SqpmethodMemory* m, const double* H, const double* g,
       const double* lbdz, const double* ubdz, const double* A,
       double* x_opt, double* dlam) const;
 
@@ -218,7 +223,6 @@ namespace casadi {
     virtual int solve_elastic_mode(SqpmethodMemory* m, casadi_int* ela_it, double gamma_1,
       casadi_int ls_iter, bool ls_success, bool so_succes, double pr_inf,
       double du_inf, double dx_norminf, std::string* info, int mode) const;
-
 
     // Solve the QP subproblem
     void codegen_qp_solve(CodeGenerator& cg, const std::string& H, const std::string& g,
@@ -238,6 +242,9 @@ namespace casadi {
 
     // Calculate gamma_1
     double calc_gamma_1(SqpmethodMemory* m) const;
+
+    /// Print iteration header
+    void do_phaseI(SqpmethodMemory* m) const;
 
     /// A documentation string
     static const std::string meta_doc;
