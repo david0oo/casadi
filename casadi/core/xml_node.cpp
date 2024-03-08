@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -61,11 +61,25 @@ void XmlNode::set_attribute(const std::string& attribute_name, const std::string
   this->attributes[attribute_name] = attribute;
 }
 
+void XmlNode::set_attribute(const std::string& att_name, const std::vector<casadi_int>& att) {
+  std::stringstream ss;
+  if (!att.empty()) {
+    ss << att.at(0);
+    for (size_t i = 1; i < att.size(); ++i) ss << " " << att.at(i);
+  }
+  return set_attribute(att_name, ss.str());
+}
+
+void XmlNode::set_attribute(const std::string& att_name, double att) {
+  std::stringstream ss;
+  ss << std::scientific << std::setprecision(std::numeric_limits<double>::digits10 + 1) << att;
+  set_attribute(att_name, ss.str());
+}
+
 std::ostream& operator<<(std::ostream &stream, const XmlNode& node) {
   node.dump(stream);
   return stream;
 }
-
 
 void XmlNode::dump(std::ostream &stream, casadi_int indent) const {
   // Print name

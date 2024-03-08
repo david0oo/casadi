@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -215,14 +215,14 @@ namespace casadi {
 
       } else {
         // True free variable
-        if (lbx[i]==-numeric_limits<double>::infinity()) {
+        if (lbx[i]==-std::numeric_limits<double>::infinity()) {
           xlow_[nx] = 0;
           ixlow_[nx] = 0;
         } else {
           xlow_[nx] = lbx[i];
           ixlow_[nx] = 1;
         }
-        if (ubx[i]==numeric_limits<double>::infinity()) {
+        if (ubx[i]==std::numeric_limits<double>::infinity()) {
           xupp_[nx] = 0;
           ixupp_[nx] = 0;
         } else {
@@ -284,7 +284,7 @@ namespace casadi {
     const casadi_int* AT_row = spAT_.row();
     casadi_int nA=0, nC=0, /*mz=0, */ nnzA=0, nnzC=0;
     for (casadi_int j=0; j<na_; ++j) {
-      if (lba[j] == -numeric_limits<double>::infinity() &&
+      if (lba[j] == -std::numeric_limits<double>::infinity() &&
           uba[j] ==  std::numeric_limits<double>::infinity()) {
         // Redundant constraint
         c_index_[j] = 0;
@@ -308,14 +308,14 @@ namespace casadi {
         c_index_[j] = -1-nA++;
       } else {
         // Inequality constraint
-        if (lba[j]==-numeric_limits<double>::infinity()) {
+        if (lba[j]==-std::numeric_limits<double>::infinity()) {
           clow_[nC] = 0;
           iclow_[nC] = 0;
         } else {
           clow_[nC] = lba[j];
           iclow_[nC] = 1;
         }
-        if (uba[j]==numeric_limits<double>::infinity()) {
+        if (uba[j]==std::numeric_limits<double>::infinity()) {
           cupp_[nC] = 0;
           icupp_[nC] = 0;
         } else {

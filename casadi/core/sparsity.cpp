@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *    Copyright (C) 2005-2013 Timothy A. Davis
  *
@@ -719,7 +719,7 @@ namespace casadi {
     }
   }
 
-  void Sparsity::spsolve(bvec_t* X, const bvec_t* B, bool tr) const {
+  void Sparsity::spsolve(bvec_t* X, bvec_t* B, bool tr) const {
     (*this)->spsolve(X, B, tr);
   }
 
@@ -1370,7 +1370,7 @@ namespace casadi {
 
   Sparsity Sparsity::horzcat(const std::vector<Sparsity> & sp) {
     // Quick return if possible
-    if (sp.empty()) return Sparsity(0, 0);
+    if (sp.empty()) return Sparsity(1, 0);
     if (sp.size()==1) return sp.front();
 
     // Count total nnz
@@ -1456,7 +1456,7 @@ namespace casadi {
 
   Sparsity Sparsity::vertcat(const std::vector<Sparsity> & sp) {
     // Quick return if possible
-    if (sp.empty()) return Sparsity(0, 0);
+    if (sp.empty()) return Sparsity(0, 1);
     if (sp.size()==1) return sp.front();
 
     // Count total nnz

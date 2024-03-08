@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -48,7 +48,6 @@
 #include "importer.hpp"
 #include "callback.hpp"
 #include "integrator.hpp"
-#include "simulator.hpp"
 #include "conic.hpp"
 #include "nlpsol.hpp"
 #include "rootfinder.hpp"
@@ -66,5 +65,6 @@
 #include "xml_file.hpp"
 #include "optistack.hpp"
 #include "serializer.hpp"
+#include "tools.hpp"
 
 #endif // CASADI_CORE_HPP

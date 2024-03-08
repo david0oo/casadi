@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -83,9 +83,10 @@ namespace casadi {
   void SparsityCast::ad_reverse(const std::vector<std::vector<MX> >& aseed,
                         std::vector<std::vector<MX> >& asens) const {
     for (casadi_int d=0; d<aseed.size(); ++d) {
-      casadi_assert_dev(aseed[d][0].sparsity().is_subset(sparsity()));
-      Sparsity sp = aseed[d][0].sparsity().sparsity_cast_mod(sparsity(), dep().sparsity());
-      asens[d][0] += sparsity_cast(aseed[d][0], sp);
+      MX seed = aseed[d][0];
+      if (!seed.sparsity().is_subset(sparsity())) seed = seed(sparsity());
+      Sparsity sp = seed.sparsity().sparsity_cast_mod(sparsity(), dep().sparsity());
+      asens[d][0] += sparsity_cast(seed, sp);
     }
   }
 
@@ -114,8 +115,8 @@ namespace casadi {
 
   MX SparsityCast::get_transpose() const {
     // For vectors, reshape is also a transpose
-    if (dep().is_vector() && sparsity().is_vector()) {
-      return dep();
+    if (sparsity().is_vector()) {
+      return dep()->get_sparsity_cast(sparsity().T());
     } else {
       return MXNode::get_transpose();
     }

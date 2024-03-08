@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -70,6 +70,9 @@ namespace casadi {
      {{"knitro",
        {OT_DICT,
         "Options to be passed to KNITRO"}},
+      {"options_file",
+       {OT_STRING,
+        "Read options from file (solver specific)"}},
       {"detect_linear_constraints",
        {OT_BOOL,
         "Detect type of constraints"}},
@@ -88,11 +91,14 @@ namespace casadi {
     Nlpsol::init(opts);
     bool detect_linear_constraints = true;
     std::vector< std::vector<casadi_int> > complem_variables;
+    options_file_ = "";
 
     // Read user options
     for (auto&& op : opts) {
       if (op.first=="knitro") {
         opts_ = op.second;
+      } else if (op.first=="options_file") {
+        options_file_ = op.second.to_string();
       } else if (op.first=="contype") {
         contype_ = op.second;
       } else if (op.first=="detect_linear_constraints") {
@@ -133,7 +139,7 @@ namespace casadi {
     Function gf_jg_fcn = create_function("nlp_gf_jg", {"x", "p"}, {"grad:f:x", "jac:g:x"});
     jacg_sp_ = gf_jg_fcn.sparsity_out(1);
     Function hess_l_fcn = create_function("nlp_hess_l", {"x", "p", "lam:f", "lam:g"},
-                                  {"hess:gamma:x:x"},
+                                  {"triu:hess:gamma:x:x"},
                                   {{"gamma", {"f", "g"}}});
     hesslag_sp_ = hess_l_fcn.sparsity_out(0);
 
@@ -221,16 +227,21 @@ namespace casadi {
       assign_vector(jacg_sp_.get_row(), Jrow);
     }
 
+    if (!options_file_.empty()) {
+      status = KN_load_param_file(m->kc, options_file_.c_str());
+      casadi_assert(status==0, "KN_load_param_file failed");
+    }
+
     // Hessian sparsity
     casadi_int nnzH = hesslag_sp_.is_null() ? 0 : hesslag_sp_.nnz();
     std::vector<int> Hcol, Hrow;
     if (nnzH>0) {
       assign_vector(hesslag_sp_.get_col(), Hcol);
       assign_vector(hesslag_sp_.get_row(), Hrow);
-      status = KN_set_int_param(m->kc, KN_PARAM_HESSOPT, KN_HESSOPT_EXACT);
+      status = KN_set_int_param_by_name(m->kc, "hessopt", KN_HESSOPT_EXACT);
       casadi_assert(status==0, "KN_set_int_param failed");
     } else {
-      status = KN_set_int_param(m->kc, KN_PARAM_HESSOPT, KN_HESSOPT_LBFGS);
+      status = KN_set_int_param_by_name(m->kc, "hessopt", KN_HESSOPT_LBFGS);
       casadi_assert(status==0, "KN_set_int_param failed");
     }
 
@@ -329,7 +340,7 @@ namespace casadi {
     casadi_assert(status==0, "KN_set_cb_user_params failed");
 
     // NumThreads to 1 to prevent segmentation fault
-    status = KN_set_int_param(m->kc, KN_PARAM_NUMTHREADS, 1);
+    status = KN_set_int_param_by_name(m->kc, "numthreads", 1);
     casadi_assert(status==0, "KN_set_cb_user_params failed");
 
     // Lagrange multipliers
@@ -340,7 +351,7 @@ namespace casadi {
 
     // Solve NLP
     status = KN_solve(m->kc);
-    int statusKnitro = staic_cast<int>(status);
+    int statusKnitro = static_cast<int>(status);
 
     m->return_status = return_codes(status);
     m->success = status==KN_RC_OPTIMAL_OR_SATISFACTORY ||
@@ -515,7 +526,7 @@ namespace casadi {
   }
 
   KnitroInterface::KnitroInterface(DeserializingStream& s) : Nlpsol(s) {
-    s.version("KnitroInterface", 1);
+    int version = s.version("KnitroInterface", 1, 2);
     s.unpack("KnitroInterface::contype", contype_);
     s.unpack("KnitroInterface::comp_type", comp_type_);
     s.unpack("KnitroInterface::comp_i1", comp_i1_);
@@ -523,11 +534,16 @@ namespace casadi {
     s.unpack("KnitroInterface::opts", opts_);
     s.unpack("KnitroInterface::jacg_sp", jacg_sp_);
     s.unpack("KnitroInterface::hesslag_sp", hesslag_sp_);
+    if (version>=2) {
+      s.unpack("KnitroInterface::options_file", options_file_);
+    } else {
+      options_file_ = "";
+    }
   }
 
   void KnitroInterface::serialize_body(SerializingStream &s) const {
     Nlpsol::serialize_body(s);
-    s.version("KnitroInterface", 1);
+    s.version("KnitroInterface", 2);
     s.pack("KnitroInterface::contype", contype_);
     s.pack("KnitroInterface::comp_type", comp_type_);
     s.pack("KnitroInterface::comp_i1", comp_i1_);
@@ -535,6 +551,7 @@ namespace casadi {
     s.pack("KnitroInterface::opts", opts_);
     s.pack("KnitroInterface::jacg_sp", jacg_sp_);
     s.pack("KnitroInterface::hesslag_sp", hesslag_sp_);
+    s.pack("KnitroInterface::options_file", options_file_);
   }
 
   KnitroMemory::KnitroMemory(const KnitroInterface& self) : self(self) {

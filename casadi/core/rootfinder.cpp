@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -319,9 +319,13 @@ namespace casadi {
     res.clear();
     for (casadi_int i=0; i<n_out_; ++i) {
       for (casadi_int d=0; d<nfwd; ++d) v[d] = fsens[d][i];
-      res.push_back(horzcat(v));
+      res.push_back(ensure_stacked(horzcat(v), sparsity_out(i), nfwd));
     }
-    return Function(name, arg, res, inames, onames, opts);
+
+    Dict options = opts;
+    options["allow_duplicate_io_names"] = true;
+
+    return Function(name, arg, res, inames, onames, options);
   }
 
   Function Rootfinder
@@ -347,9 +351,12 @@ namespace casadi {
     res.clear();
     for (casadi_int i=0; i<n_in_; ++i) {
       for (casadi_int d=0; d<nadj; ++d) v[d] = asens[d][i];
-      res.push_back(horzcat(v));
+      res.push_back(ensure_stacked(horzcat(v), sparsity_in(i), nadj));
     }
-    return Function(name, arg, res, inames, onames, opts);
+
+    Dict options = opts;
+    options["allow_duplicate_io_names"] = true;
+    return Function(name, arg, res, inames, onames, options);
   }
 
   int Rootfinder::

@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *    Copyright (C) 2005-2013 Timothy A. Davis
  *
@@ -66,8 +66,8 @@ namespace casadi {
    columns respectively), there are also two vectors of integers:
 
    1. "colind" [length size2()+1], which contains the index to the first non-zero element on or
-   after the corresponding column. All the non-zero elements of a particular i are thus the elements
-   with index el that fulfills: colind[i] <= el < colind[i+1].
+   after the corresponding column. All the non-zero elements of a particular column i are thus
+   the elements with index el that fulfills: colind[i] <= el < colind[i+1].
 
    2. "row" [same length as the number of non-zero elements, nnz()] The rows for each of the
    structural non-zeros.
@@ -251,11 +251,14 @@ namespace casadi {
      * P @ v = v[p]
      * 
      * The inverse of a permutation matrix is equal to its transpose (property of orthonormality)
-     * 
-     */
+     *
+
+        \identifier{244} */
     static Sparsity permutation(const std::vector<casadi_int>& p, bool invert=false);
 
-    /** \brief Construct permutation vector from permutation matrix */
+    /** \brief Construct permutation vector from permutation matrix
+
+        \identifier{245} */
     const std::vector<casadi_int> permutation_vector(bool invert=false) const;
 
     /** Get the diagonal of the matrix/create a diagonal matrix
@@ -643,8 +646,9 @@ namespace casadi {
      * Y = [* *; . . ; * *]
      * x = [ * . . .; . . . .; . . * .; . . . *]
      * returns [* *; . . ; . *]
-     * 
-     */
+     *
+
+        \identifier{246} */
     Sparsity sparsity_cast_mod(const Sparsity& X, const Sparsity& Y) const;
 
     /// Take the inverse of a sparsity pattern; flip zeros and non-zeros
@@ -776,22 +780,34 @@ namespace casadi {
         \identifier{cz} */
     bool is_vector() const;
 
-    /** \brief Is diagonal? */
+    /** \brief Is diagonal?
+
+        \identifier{247} */
     bool is_diag() const;
 
-    /** \brief Is square? */
+    /** \brief Is square?
+
+        \identifier{248} */
     bool is_square() const;
 
-    /** \brief Is symmetric? */
+    /** \brief Is symmetric?
+
+        \identifier{249} */
     bool is_symmetric() const;
 
-    /** \brief Is upper triangular? */
+    /** \brief Is upper triangular?
+
+        \identifier{24a} */
     bool is_triu(bool strictly = false) const;
 
-    /** \brief Is lower triangular? */
+    /** \brief Is lower triangular?
+
+        \identifier{24b} */
     bool is_tril(bool strictly = false) const;
 
-    /** \brief Check whether the sparsity-pattern indicates structural singularity */
+    /** \brief Check whether the sparsity-pattern indicates structural singularity
+
+        \identifier{24c} */
     bool is_singular() const;
 
     /** \brief Is this a permutation matrix?
@@ -802,7 +818,8 @@ namespace casadi {
      * Implies square
      * 
      * Equivalent to is_orthonormal(false)
-     */
+
+        \identifier{24d} */
     bool is_permutation() const;
 
     /** \brief Is this a selection matrix?
@@ -813,25 +830,29 @@ namespace casadi {
      * \param[in] allow_empty Allow the resultant vector to have structural zeros
      * 
      * Equivalent to is_orthonormal_rows(allow_empty)
-     */
+
+        \identifier{24e} */
     bool is_selection(bool allow_empty=false) const;
 
     /** \brief Are both rows and columns orthonormal ?
      * 
      * \param[in] allow_empty Disregard empty rows and columns in the analysis
-     */
+
+        \identifier{24f} */
     bool is_orthonormal(bool allow_empty=false) const;
 
     /** \brief Are the rows of the pattern orthonormal ?
      * 
      * \param[in] allow_empty Disregard empty rows in the analysis
-     */
+
+        \identifier{24g} */
     bool is_orthonormal_rows(bool allow_empty=false) const;
 
     /** \brief Are the columns of the pattern orthonormal ?
      * 
      * \param[in] allow_empty Disregard empty columns in the analysis
-     */
+
+        \identifier{24h} */
     bool is_orthonormal_columns(bool allow_empty=false) const;
 
     /** \brief Do the rows appear sequentially on each column
@@ -985,7 +1006,7 @@ namespace casadi {
     /** \brief Propagate sparsity through a linear solve
 
         \identifier{d9} */
-    void spsolve(bvec_t* X, const bvec_t* B, bool tr) const;
+    void spsolve(bvec_t* X, bvec_t* B, bool tr) const;
 #endif // SWIG
 
     /** \brief Get the location of all non-zero elements as they would appear in a Dense matrix
@@ -1178,14 +1199,16 @@ namespace casadi {
   /** \brief Generate a hash value incrementally, array
 
       \identifier{dq} */
-  inline void hash_combine(std::size_t& seed, const casadi_int* v, std::size_t sz) {
+  template<typename T>
+  inline void hash_combine(std::size_t& seed, const T* v, std::size_t sz) {
     for (casadi_int i=0; i<sz; ++i) hash_combine(seed, v[i]);
   }
 
   /** \brief Generate a hash value incrementally (function taken from boost)
 
       \identifier{dr} */
-  inline void hash_combine(std::size_t& seed, const std::vector<casadi_int>& v) {
+  template<typename T>
+  inline void hash_combine(std::size_t& seed, const std::vector<T>& v) {
     hash_combine(seed, get_ptr(v), v.size());
   }
 

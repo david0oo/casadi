@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -131,7 +131,9 @@ typedef struct {
 
 /* Initialize */
 inline void casadi_init(casadi_mem* mem, casadi_functions* f) {
+#ifndef NDEBUG
   int flag;
+#endif
 
   /* Check arguments */
   assert(mem!=0);
@@ -152,7 +154,10 @@ inline void casadi_init(casadi_mem* mem, casadi_functions* f) {
   mem->sz_res=mem->n_out;
   mem->sz_iw= mem->sz_w = 0;
   if (f->work) {
-    flag = f->work(&mem->sz_arg, &mem->sz_res, &mem->sz_iw, &mem->sz_w);
+#ifndef NDEBUG
+    flag =
+#endif
+           f->work(&mem->sz_arg, &mem->sz_res, &mem->sz_iw, &mem->sz_w);
     assert(flag==0);
   }
 
@@ -168,6 +173,7 @@ inline void casadi_init(casadi_mem* mem, casadi_functions* f) {
   mem->res = 0;
   mem->iw = 0;
   mem->w = 0;
+
 }
 
 /* Free claimed static memory */
@@ -256,7 +262,9 @@ inline int casadi_eval(casadi_mem* mem) {
 /* Create a memory struct with dynamic memory allocation */
 #ifndef CASADI_STATIC
 inline casadi_mem* casadi_alloc(casadi_functions* f) {
+#ifndef NDEBUG
   int flag;
+#endif
 
   /* Allocate struct */
   casadi_mem* mem = (casadi_mem*)malloc(sizeof(casadi_mem));
@@ -266,7 +274,10 @@ inline casadi_mem* casadi_alloc(casadi_functions* f) {
   casadi_init(mem, f);
 
   /* Dynamically allocate arrays */
-  flag = casadi_alloc_arrays(mem);
+#ifndef NDEBUG
+  flag =
+#endif
+         casadi_alloc_arrays(mem);
   assert(flag==0);
 
   /* Initialize allocated arrays */

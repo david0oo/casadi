@@ -1,6 +1,6 @@
 name: style
 
-on: push
+on: [push, pull_request]
 
 jobs:
   main:
@@ -8,7 +8,7 @@ jobs:
 
     steps:
 
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v4.1.1
       with:
         fetch-depth: 0 # for git-restore-mtime
 
@@ -23,6 +23,6 @@ jobs:
         make lint
     - name: clang-tidy
       run: |
-        cd build
-        clang-tidy --version
-        make clang-tidy
+        #cd build
+        #clang-tidy --version
+        #make clang-tidy

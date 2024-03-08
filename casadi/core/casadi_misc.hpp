@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -162,7 +162,9 @@ private:
   template<typename T>
   std::vector<T> join(const std::vector<T> &a, const std::vector<T> &b, const std::vector<T> &c);
 
-  /** \brief Does the list represent a permutation? */
+  /** \brief Does the list represent a permutation?
+
+      \identifier{250} */
   bool is_permutation(const std::vector<casadi_int> &order);
 
   /** \brief permute a list
@@ -171,7 +173,9 @@ private:
   template<typename T>
   std::vector<T> permute(const std::vector<T> &a, const std::vector<casadi_int> &order);
 
-  /** \brief inverse a permutation vector */
+  /** \brief inverse a permutation vector
+
+      \identifier{251} */
   std::vector<casadi_int> invert_permutation(const std::vector<casadi_int> &a);
 
   /** \brief find nonzeros

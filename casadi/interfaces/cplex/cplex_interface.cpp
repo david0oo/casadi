@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl, Kobe Bergmans
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl, Kobe Bergmans
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -41,6 +41,14 @@ namespace casadi {
     plugin->version = CASADI_VERSION;
     plugin->options = &CplexInterface::options_;
     plugin->deserialize = &CplexInterface::deserialize;
+    #ifdef CPLEX_ADAPTOR
+      char buffer[400];
+      int ret = cplex_adaptor_load(buffer, sizeof(buffer));
+      if (ret!=0) {
+        casadi_warning("Failed to load CPLEX adaptor: " + std::string(buffer) + ".");
+        return 1;
+      }
+    #endif
     return 0;
   }
 
@@ -88,7 +96,12 @@ namespace casadi {
         "Weights corresponding to SOS entries."}},
       {"sos_types",
        {OT_INTVECTOR,
-        "Specify 1 or 2 for each SOS group."}}
+        "Specify 1 or 2 for each SOS group."}},
+      {"version_suffix",
+       {OT_STRING,
+        "Specify version of cplex to load. "
+        "We will attempt to load libcplex<version_suffix>.[so|dll|dylib]. "
+        "Default value is taken from CPLEX_VERSION env variable."}}
      }
   };
 
@@ -175,6 +188,14 @@ namespace casadi {
     alloc_w(na_, true); // lam_a
   }
 
+  int param_by_name(CPXENVptr env, const std::string &name) {
+    int whichparam;
+    if (CPXXgetparamnum(env, name.c_str(), &whichparam)) {
+      casadi_error("No such CPLEX parameter: " + name);
+    }
+    return whichparam;
+  }
+
   int CplexInterface::init_mem(void* mem) const {
     if (Conic::init_mem(mem)) return 1;
     if (!mem) return 1;
@@ -196,33 +217,40 @@ namespace casadi {
     }
 
     // Enable output by default
-    if (CPXXsetintparam(m->env, CPX_PARAM_SCRIND, CPX_ON)) {
+    int screen_output = 0;
+    try {
+      screen_output = param_by_name(m->env, "CPXPARAM_ScreenOutput");
+    } catch (std::exception& e) {
+      screen_output = param_by_name(m->env, "CPX_PARAM_SCRIND");
+    }
+    if (CPXXsetintparam(m->env, screen_output, CPX_ON)) {
       casadi_error("Failure setting CPX_PARAM_SCRIND");
     }
 
     // Optimality tolerance
-    if (CPXXsetdblparam(m->env, CPX_PARAM_EPOPT, tol_)) {
+    if (CPXXsetdblparam(m->env, param_by_name(m->env, "CPX_PARAM_EPOPT"), tol_)) {
       casadi_error("Failure setting CPX_PARAM_EPOPT");
     }
 
     // Feasibility tolerance
-    if (CPXXsetdblparam(m->env, CPX_PARAM_EPRHS, tol_)) {
+    if (CPXXsetdblparam(m->env, param_by_name(m->env, "CPX_PARAM_EPRHS"), tol_)) {
       casadi_error("Failure setting CPX_PARAM_EPRHS");
     }
 
     // We start with barrier if crossover was chosen.
-    if (CPXXsetintparam(m->env, CPX_PARAM_QPMETHOD, qp_method_ == 7 ? 4 : qp_method_)) {
+    if (CPXXsetintparam(m->env, param_by_name(m->env, "CPX_PARAM_QPMETHOD"),
+        qp_method_ == 7 ? 4 : qp_method_)) {
       casadi_error("Failure setting CPX_PARAM_QPMETHOD");
     }
 
     // Setting dependency check option
-    if (CPXXsetintparam(m->env, CPX_PARAM_DEPIND, dep_check_)) {
+    if (CPXXsetintparam(m->env, param_by_name(m->env, "CPX_PARAM_DEPIND"), dep_check_)) {
       casadi_error("Failure setting CPX_PARAM_DEPIND");
     }
 
     // Setting crossover algorithm
     if (qp_method_ == 7) {
-      if (CPXXsetintparam(m->env, CPX_PARAM_BARCROSSALG, 1)) {
+      if (CPXXsetintparam(m->env, param_by_name(m->env, "CPX_PARAM_BARCROSSALG"), 1)) {
         casadi_error("Failure setting CPX_PARAM_BARCROSSALG");
       }
     }
@@ -358,13 +386,15 @@ namespace casadi {
     casadi_copy(arg[CONIC_X0], nx_, x);
     double* lam_x=w; w += nx_;
     casadi_copy(arg[CONIC_LAM_X0], nx_, lam_x);
+    // Flip the sign of the multipliers
+    casadi_scal(nx_, -1., lam_x);
 
     // Temporaries
     double* lam_a=w; w += na_;
 
     // We change method in crossover
     if (m->is_warm && qp_method_ == 7) {
-      (void)CPXXsetintparam(m->env, CPX_PARAM_QPMETHOD, 1);
+      (void)CPXXsetintparam(m->env, param_by_name(m->env, "CPX_PARAM_QPMETHOD"), 1);
     }
 
     for (casadi_int i = 0; i < na_; ++i) {
@@ -499,12 +529,12 @@ namespace casadi {
     if (qp_method_ != 0 && qp_method_ != 4 && m->is_warm) {
       // TODO(Joel): Initialize slacks and dual variables of bound constraints
       if (CPXXcopystart(m->env, m->lp, get_ptr(m->cstat), get_ptr(m->rstat), x,
-           nullptr, nullptr, lam_x)) {
+           nullptr, lam_x, nullptr)) {
         casadi_error("CPXXcopystart failed");
       }
     } else {
       if (CPXXcopystart(m->env, m->lp, nullptr, nullptr, x,
-           nullptr, nullptr, lam_x)) {
+           nullptr, lam_x, nullptr)) {
         casadi_error("CPXXcopystart failed");
       }
     }
@@ -630,16 +660,12 @@ namespace casadi {
 
           // Retrieving solution
           int sol_ret = CPXXsolution(m->env, m->lp, &solstat, &f, x, lam_a, get_ptr(slack), lam_x);
-          if (sol_ret == CPXERR_NO_SOLN) {
+          if (sol_ret == CPXERR_NO_SOLN || sol_ret == CPXERR_NO_SOLN ) {
             m->d_qp.unified_return_status = SOLVER_RET_INFEASIBLE;
           }
 
           if (sol_ret) {
-            if (error_on_fail_) {
-              casadi_error("CPXXsolution failed");
-            } else {
-              m->d_qp.success = false;
-            }
+            m->d_qp.success = false;
           }
       }
     }

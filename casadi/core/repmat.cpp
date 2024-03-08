@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -64,17 +64,16 @@ namespace casadi {
   static bvec_t Orring(bvec_t x, bvec_t y) { return x | y; }
 
   int HorzRepmat::sp_forward(const bvec_t** arg, bvec_t** res, casadi_int* iw, bvec_t* w) const {
-    casadi_int nnz = dep(0).nnz();
-    std::fill(res[0], res[0]+nnz, 0);
     return eval_gen<bvec_t>(arg, res, iw, w);
   }
 
   int HorzRepmat::sp_reverse(bvec_t** arg, bvec_t** res, casadi_int* iw, bvec_t* w) const {
     casadi_int nnz = dep(0).nnz();
+    casadi_int NNZ = sparsity().nnz();
     for (casadi_int i=0;i<n_;++i) {
       std::transform(res[0]+i*nnz, res[0]+(i+1)*nnz, arg[0], arg[0], &Orring);
     }
-    std::fill(res[0], res[0]+nnz, 0);
+    std::fill(res[0], res[0]+NNZ, 0);
     return 0;
   }
 
@@ -105,7 +104,7 @@ namespace casadi {
 
   HorzRepsum::HorzRepsum(const MX& x, casadi_int n) : n_(n) {
     casadi_assert_dev(x.size2() % n == 0);
-    std::vector<Sparsity> sp = horzsplit(x.sparsity(), x.size2()/n);
+    std::vector<Sparsity> sp = horzsplit_n(x.sparsity(), n);
     Sparsity block = sp[0];
     for (casadi_int i=1;i<sp.size();++i) {
       block = block+sp[i];

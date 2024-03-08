@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -35,42 +35,69 @@ import os
 
 solvers= []
 
-if has_nlpsol("worhp")  and not args.ignore_memory_heavy:
-  solvers.append(("worhp",{"worhp": {"TolOpti":1e-9}},set()))
+if "SKIP_WORHP_TESTS" not in os.environ and has_nlpsol("worhp")  and not args.ignore_memory_heavy:
+  solvers.append(("worhp",{"worhp": {"TolOpti":1e-9}},{"codegen": False,"discrete":False}))
   #solvers.append(("worhp",{"TolOpti":1e-20,"TolFeas":1e-20,"UserHM": False}))
   pass
 
-if has_nlpsol("ipopt"):
-  solvers.append(("ipopt",{"print_time":False,"ipopt": {"tol": 1e-10, "derivative_test":"second-order","print_level":0}},set()))
-  solvers.append(("ipopt",{"print_time":False,"ipopt": {"tol": 1e-10, "derivative_test":"first-order","hessian_approximation": "limited-memory","print_level":0}},set()))
+if "SKIP_SLEQP_TESTS" not in os.environ and has_nlpsol("sleqp"):
+  solvers.append(("sleqp",{"print_time":False,"sleqp": {"linesearch": "Approx","feas_tol":1e-7,"stat_tol":1e-7,"slack_tol":1e-7, "hess_eval": "Exact"}},{"codegen": False,"discrete":False}))
 
-if has_nlpsol("ipopt") and has_nlpsol("sqpmethod"):
+if "SKIP_ALPAQA_TESTS" not in os.environ and has_nlpsol("alpaqa"):
+  solvers.append(("alpaqa",{"print_time":False,"alpaqa": {"alm.tolerance": 1e-10, "alm.dual_tolerance": 1e-10, "alm.penalty_update_factor": 10, "alm.max_iter": 3000, "alm.print_interval": 1, "panoc.max_iter": 500, "panoc.print_interval": 1, "lbfgs.memory": 2}},{"codegen": False,"discrete":False}))
+
+if "SKIP_IPOPT_TESTS" not in os.environ and has_nlpsol("ipopt"):
+  codegen = {"extralibs": ["ipopt"], "std": "c99"}
+  solvers.append(("ipopt",{"print_time":False,"ipopt": {"tol": 1e-10, "derivative_test":"second-order","print_level":0}},{"codegen": codegen,"discrete":False}))
+  solvers.append(("ipopt",{"print_time":False,"ipopt": {"tol": 1e-10, "derivative_test":"first-order","hessian_approximation": "limited-memory","print_level":0}},{"codegen": codegen,"discrete":False}))
+
+if "SKIP_IPOPT_TESTS" not in os.environ and has_nlpsol("ipopt") and has_nlpsol("sqpmethod"):
   qpsol_options = {"nlpsol": "ipopt", "nlpsol_options": {"ipopt.tol": 1e-12,"ipopt.tiny_step_tol": 1e-20, "ipopt.fixed_variable_treatment":"make_constraint","ipopt.print_level":0,"print_time":False,"print_time":False} }
-  solvers.append(("sqpmethod",{"qpsol": "nlpsol","qpsol_options": qpsol_options,"print_header":False,"print_iteration":True,"print_time":False},set()))
-  solvers.append(("sqpmethod",{"qpsol": "nlpsol","qpsol_options": qpsol_options,"hessian_approximation": "limited-memory","tol_du":1e-10,"tol_pr":1e-10,"min_step_size":1e-14,"print_header":False,"print_iteration":True,"print_time":False,"max_iter":55},set()))
+  solvers.append(("sqpmethod",{"qpsol": "nlpsol","qpsol_options": qpsol_options,"print_header":False,"print_iteration":True,"print_time":False},{"codegen": False,"discrete":False}))
+  solvers.append(("sqpmethod",{"qpsol": "nlpsol","qpsol_options": qpsol_options,"hessian_approximation": "limited-memory","tol_du":1e-10,"tol_pr":1e-10,"min_step_size":1e-14,"print_header":False,"print_iteration":True,"print_time":False,"max_iter":55},{"codegen": False,"discrete":False}))
 
-if has_conic("qrqp") and has_nlpsol("sqpmethod"):
+if "SKIP_QRQP_TESTS" not in os.environ and has_conic("qrqp") and has_nlpsol("sqpmethod"):
+  codegen = {"std": "c99"}
   qpsol_options = {"print_iter":False,"print_header":False,"error_on_fail" : False}
-  solvers.append(("sqpmethod",{"qpsol": "qrqp","qpsol_options": qpsol_options,"print_header":False,"print_iteration":False,"print_time":False},{"codegen"}))
-  solvers.append(("sqpmethod",{"qpsol": "qrqp","max_iter_ls":0,"qpsol_options": qpsol_options,"print_header":False,"print_iteration":False,"print_time":False},{"codegen"}))
-  solvers.append(("sqpmethod",{"qpsol": "qrqp","convexify_strategy":"regularize","max_iter":500,"qpsol_options": qpsol_options,"print_header":False,"print_iteration":True,"print_time":False,"tol_du":1e-8,"min_step_size":1e-12},{"codegen"}))
+  solvers.append(("sqpmethod",{"qpsol": "qrqp","qpsol_options": qpsol_options,"print_header":False,"print_iteration":False,"print_time":False},{"codegen":codegen,"discrete":False}))
+  solvers.append(("sqpmethod",{"qpsol": "qrqp","max_iter_ls":0,"qpsol_options": qpsol_options,"print_header":False,"print_iteration":False,"print_time":False},{"codegen":codegen,"discrete":False}))
+  solvers.append(("sqpmethod",{"qpsol": "qrqp","convexify_strategy":"regularize","max_iter":500,"qpsol_options": qpsol_options,"print_header":False,"print_iteration":True,"print_time":False,"tol_du":1e-8,"min_step_size":1e-12},{"codegen":codegen,"discrete":False}))
 
-if has_nlpsol("blocksqp"):
+if "SKIP_BLOCKSQP_TESTS" not in os.environ and has_nlpsol("blocksqp"):
   try:
     load_linsol("ma27")
-    solvers.append(("blocksqp",{},set()))
+    solvers.append(("blocksqp",{},{"codegen": False,"discrete":False}))
   except:
     pass
 
-if has_nlpsol("bonmin"):
-  solvers.append(("bonmin",{},{"discrete"}))
+if "SKIP_BONMIN_TESTS" not in os.environ and has_nlpsol("bonmin"):
+  solvers.append(("bonmin",{},{"discrete":True,"codegen":False}))
 
 if "SKIP_KNITRO_TESTS" not in os.environ and has_nlpsol("knitro"):
-  solvers.append(("knitro",{"knitro":{"feastol":1e-9,"opttol":1e-9,"ftol":1e-20}},set()))
+  solvers.append(("knitro",{"knitro":{"feastol":1e-9,"opttol":1e-9,"ftol":1e-20}},{"codegen": False,"discrete":False}))
+
+if "SKIP_SNOPT_TESTS" not in os.environ and has_nlpsol("snopt"):
+  solvers.append(("snopt",{"snopt": {"Verify_level": 3,"Major_optimality_tolerance":1e-12,"Minor_feasibility_tolerance":1e-12,"Major_feasibility_tolerance":1e-12}},{"codegen": False,"discrete":False}))
+
 
 print(solvers)
 
 class NLPtests(casadiTestCase):
+
+  @requires_nlpsol("alpaqa")
+  def test_alpaqa(self):
+    x=SX.sym("x")
+    y=SX.sym("y")
+
+    nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
+
+    solver = nlpsol("mysolver", "alpaqa", nlp)
+    solver_in = {}
+    solver_in["lbx"]=[-10]*2
+    solver_in["ubx"]=[10]*2
+    solver_in["lbg"]=[-10]
+    solver_in["ubg"]=[10]
+    solver_out = solver(**solver_in)
 
   @memory_heavy()
   def test_nonregular_point(self):
@@ -78,7 +105,9 @@ class NLPtests(casadiTestCase):
 
     nlp={'x':x,'f':(x+1)**2, 'g': sqrt(x)}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      
+      print("test_nonregular_point",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-1000]
@@ -90,12 +119,14 @@ class NLPtests(casadiTestCase):
         print(solver(**solver_in))
       except:
         pass
-      if Solver not in ["ipopt","snopt","blocksqp","bonmin","knitro"]:
+      if Solver not in ["ipopt","snopt","blocksqp","bonmin","knitro","sleqp","alpaqa"]:
         self.assertTrue(solver.stats()["unified_return_status"]=="SOLVER_RET_NAN")
       self.assertFalse(solver.stats()["success"])
 
     nlp={'x':x,'f':x**2, 'g': sqrt(x)}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      
+      print("test_nonregular_point",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]
@@ -108,13 +139,43 @@ class NLPtests(casadiTestCase):
         solver_out = solver(**solver_in)
       except:
         pass
-      if Solver not in ["ipopt","snopt","bonmin","knitro"]:
+      if Solver not in ["ipopt","snopt","bonmin","knitro","sleqp","alpaqa"]:
         self.assertTrue(solver.stats()["unified_return_status"]=="SOLVER_RET_NAN")
       self.assertFalse(solver.stats()["success"])
 
   def test_iteration_interrupt(self):
-   for Solver, solver_options, features in solvers:
-      if Solver not in ["ipopt","sqpmethod"]: continue
+  
+   #add test for keyboard interrupt in fun_eval, not just iteration_callback
+   
+   class mycallback(Callback):
+      def __init__(self, name):
+        Callback.__init__(self)
+        opts = {"enable_fd":True}
+        self.construct(name, opts)
+
+      def eval(self,argin):
+        raise KeyboardInterrupt()
+
+   interrupt = mycallback("interrupt")
+   x = MX.sym("x")
+   nlp = {"x":x,"f":interrupt(x),"g":x}
+   for Solver, solver_options, aux_options in solvers:
+     
+     solver_options = dict(solver_options)
+     solver_options["error_on_fail"] = True
+     solver = nlpsol("solver",Solver,nlp,solver_options)
+
+     with self.assertInAnyOutput("KeyboardInterrupt"):
+       solver(lbg=-5,ubg=5)
+
+     with self.assertRaises(Exception):
+         solver(lbg=-5,ubg=5)
+
+   for Solver, solver_options, aux_options in solvers:
+      
+      #if Solver not in ["ipopt","sqpmethod"]: continue
+      if Solver in ["worhp","blocksqp","knitro","bonmin","snopt","alpaqa"]: continue
+      print("test_iteration_interrupt",Solver,solver_options)
 
       opti = Opti()
 
@@ -124,6 +185,7 @@ class NLPtests(casadiTestCase):
         raise KeyboardInterrupt()
 
       opti.minimize((x-1)**4)
+      opti.subject_to(-5<=(x<=5))
 
 
       opts = dict(solver_options)
@@ -162,9 +224,9 @@ class NLPtests(casadiTestCase):
 
     nlp={'x':vertcat(*[x,y]), 'f':(1.4-x)**2+100*(y-x**2)**2}
 
-    for Solver, solver_options, features in solvers:
-      if "discrete" not in features: continue
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      if not aux_options["discrete"]: continue
+      print("test_discrete",Solver,solver_options)
       solver_options = dict(solver_options)
       solver_options["discrete"] = [1,0]
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
@@ -179,9 +241,9 @@ class NLPtests(casadiTestCase):
 
       self.check_serialize(solver,solver_in)
 
-    for Solver, solver_options, features in solvers:
-      if "discrete" not in features: continue
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      if not aux_options["discrete"]: continue
+      print("test_discrete",Solver,solver_options)
       solver_options = dict(solver_options)
       solver_options["discrete"] = [0,1]
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
@@ -198,8 +260,10 @@ class NLPtests(casadiTestCase):
   def test_nan(self):
     x=SX.sym("x")
     nlp={'x':x, 'f':-x,'g':x}
-    for Solver, nlp_options, features in solvers:
-      solver = nlpsol("mysolver", Solver, nlp, nlp_options)
+    for Solver, solver_options, aux_options in solvers:
+      
+      print("test_nan",Solver,solver_options)
+      solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
       for x in ["x","g"]:
         lb = "lb"+x
@@ -218,33 +282,39 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x",2)
     nlp={'x':x, 'f':-x[0],'g':diag(x)}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_wrongdims",Solver,solver_options)
       with self.assertInException("dense vector"):
         solver = nlpsol("mysolver", Solver, nlp, solver_options)
     nlp={'x':x, 'f':-x[0],'g':mtimes(x,x.T)}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_wrongdims",Solver,solver_options)
       with self.assertInException("dense vector"):
         solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
     nlp={'x':x, 'f':SX(1,1),'g':x}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_wrongdims",Solver,solver_options)
       with self.assertInException("dense"):
         solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
     nlp={'x':x, 'f':SX.zeros(0,0),'g':x}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_wrongdims",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
     nlp={'x':x, 'g':x}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_wrongdims",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
     x = vec(diag(SX.sym("x",2)))
     nlp={'x':x, 'f':mtimes(x.T,x),'g':x[0]}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_wrongdims",Solver,solver_options)
       with self.assertInException("dense vector"):
         solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
@@ -253,7 +323,8 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x")
     nlp={'x':x, 'f':-cos(x),'g':x}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_initialcond",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[6*pi+0.01]
@@ -269,7 +340,8 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':x}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_boundsviol",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -280,7 +352,8 @@ class NLPtests(casadiTestCase):
       with self.assertRaises(Exception):
         solver_out = solver(**solver_in)
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_boundsviol",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -295,8 +368,8 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':x}
 
-    for Solver, solver_options, features in solvers:
-      self.message("trivial " + str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPT",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -312,16 +385,16 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,9,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPT_par(self):
     x=SX.sym("x")
     p=SX.sym("p")
     nlp={'x':x, 'p':p, 'f':(x-p)**2, 'g':x}
 
-    for Solver, solver_options, features in solvers:
-      self.message("trivial " + str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPT_par",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -337,16 +410,16 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,9,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTinf(self):
     self.message("trivial IPOPT, infinity bounds")
     x=SX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':x}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTinf",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-inf]
@@ -369,8 +442,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,9,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,9,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
@@ -387,8 +460,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,9,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,9,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
 
 
@@ -399,10 +472,10 @@ class NLPtests(casadiTestCase):
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "sqpmethod"==Solver and "regularize" in str(solver_options): continue
       if "snopt"==Solver: continue
-      self.message(str(Solver))
+      print("test_IPOPTrb",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]*2
@@ -415,8 +488,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTrb2(self):
     self.message("rosenbrock, limited-memory hessian approx")
@@ -424,9 +497,9 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "sqpmethod"==Solver and "regularize" in str(solver_options): continue
-      self.message(str(Solver))
+      print("test_IPOPTrb2",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]*2
@@ -445,17 +518,17 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,5,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
-
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
+        
   def test_IPOPTrbf(self):
     self.message("rosenbrock fixed, limited-memory hessian approx")
     x=SX.sym("x")
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTrbf",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0,1]
@@ -475,9 +548,21 @@ class NLPtests(casadiTestCase):
         if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5,str(Solver))
         if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,5,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
+  @requires_nlpsol("knitro")
+  def test_knitro_options_file(self):
+    x = MX.sym("x")
+    
+    nlp = {"x": x, "f":x**2}
+    with open("my_knitro.opt","w") as f:
+        f.write("maxit            42\n")
+    
+    solver = nlpsol("solver","knitro",nlp,{"options_file":"my_knitro.opt"})
+    with self.assertOutput(["maxit:","42"],[]):
+        solver()
+ 
   @requires_nlpsol("ipopt")
   def test_ipopt_solver(self):
 
@@ -498,7 +583,7 @@ class NLPtests(casadiTestCase):
 
     DM.set_precision(16)
     for solver in solvers:
-      print("ipopt.linear_solver", solver)
+      print("test_ipopt_solver",solver)
       solver = nlpsol("mysolver", "ipopt", nlp, {"ipopt.linear_solver": solver})
       solver_in = {}
       solver_in["x0"]=[0.5,0.5]
@@ -528,8 +613,8 @@ class NLPtests(casadiTestCase):
     c_r = 4.56748075136258e-02;
     x_r = [7.86415156987791e-01,6.17698316967954e-01]
 
-    for Solver, solver_options, features in solvers:
-      self.message(Solver)
+    for Solver, solver_options, aux_options in solvers:
+      print("test_warmstart",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0.5,0.5]
@@ -547,10 +632,10 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][1],x_r[1],digits,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5 if Solver=="snopt" else 8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5 if Solver=="snopt" else 8,str(Solver))
-      if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
+      if Solver not in ["bonmin"]: self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
       self.message(":warmstart")
       if "ipopt" in str(Solver):
@@ -573,6 +658,9 @@ class NLPtests(casadiTestCase):
 
 
         solver_out = solver(**solver_in)
+        
+        if aux_options["codegen"]:
+           self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTrhb2_gen(self):
     self.message("rosenbrock, exact hessian generated, constrained")
@@ -588,8 +676,8 @@ class NLPtests(casadiTestCase):
     sigma=SX.sym("sigma")
     lambd=SX.sym("lambd")
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTrhb2_gen",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {} #"toldx": 1e-15, "tolgl": 1e-15}).iteritems():
       solver_in["x0"]=[0.5,0.5]
@@ -606,11 +694,11 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][1],x_r[1],digits,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5 if Solver=="snopt" else 8,str(Solver)+str(6 if Solver=="snopt" else 8))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5 if Solver=="snopt" else 8,str(Solver))
-      if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
+      if Solver not in ["bonmin"]: self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
       self.check_serialize(solver, solver_in)
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
 
   def test_jacG_empty(self):
@@ -620,14 +708,14 @@ class NLPtests(casadiTestCase):
     obj = (1-x)**2+100*(y-x**2)**2
     nlp={'x':vertcat(*[x,y]), 'f':obj, 'g':1}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
       if "worhp"==Solver:
         continue
       if "sqpmethod"==Solver:
         continue
       if "snopt"==Solver:
         continue
+      print("test_jacG_empty",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0.5,0.5]
@@ -644,8 +732,9 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_x"],DM([0,0]),str(Solver),digits=digits)
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_g"],DM([0]),str(Solver),digits=digits)
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        if "ipopt"==Solver: continue # Empty sparsity pattern not supported in IPOPT C interface
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTrhb2_gen_par(self):
     self.message("rosenbrock, exact hessian generated, constrained, parametric")
@@ -659,8 +748,8 @@ class NLPtests(casadiTestCase):
     c_r = 4.56748075136258e-02;
     x_r = [7.86415156987791e-01,6.17698316967954e-01]
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTrhb2_gen_par",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -672,8 +761,8 @@ class NLPtests(casadiTestCase):
       solver_in["p"]=[1]
 
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
       solver_out = solver(**solver_in)
 
       digits = 5
@@ -683,7 +772,7 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][1],x_r[1],digits,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,5 if Solver=="snopt" else 8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,5 if Solver=="snopt" else 8,str(Solver))
-      if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
+      if Solver not in ["bonmin"]: self.assertAlmostEqual(solver_out["lam_g"][0],0.12149655447670,6,str(Solver))
 
 
   def test_IPOPTrhb_gen(self):
@@ -696,10 +785,10 @@ class NLPtests(casadiTestCase):
 
     sigma=SX.sym("sigma")
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "sqpmethod"==Solver and "regularize" in str(solver_options): continue
       if "snopt"==Solver: continue
-      self.message(str(Solver))
+      print("test_IPOPTrhb_gen",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]*2
@@ -711,8 +800,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,8,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTrhb_gen_xnonfree(self):
     self.message("rosenbrock, exact hessian generated, non-free x")
@@ -724,10 +813,10 @@ class NLPtests(casadiTestCase):
 
     sigma=SX.sym("sigma")
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "sqpmethod"==Solver and "regularize" in str(solver_options): continue
       if "snopt"==Solver: continue
-      self.message(str(Solver))
+      print("test_IPOPTrhb_gen_xnonfree",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[1,-10]
@@ -742,8 +831,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,6,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,6,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTrhb_gen_par(self):
     self.message("rosenbrock, exact hessian generated, parametric")
@@ -756,10 +845,10 @@ class NLPtests(casadiTestCase):
 
     sigma=SX.sym("sigma")
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "sqpmethod"==Solver and "regularize" in str(solver_options): continue
       if "snopt"==Solver: continue
-      self.message(str(Solver))
+      print("test_IPOPTrhb_gen_par",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]*2
@@ -770,8 +859,9 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["x"][0],1,7,str(Solver))
       self.assertAlmostEqual(solver_out["x"][1],1,7,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
+        
   @memory_heavy()
   def test_IPOPTnorm(self):
     self.message("IPOPT min ||x||^2_2")
@@ -782,8 +872,8 @@ class NLPtests(casadiTestCase):
     x0=linspace(0,1,N)
     X0=MX(x0)
     nlp={'x':x, 'f':norm_2(x-X0), 'g':2*x}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTnorm",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       # ({"tol":1e-8,"max_iter":103, "MaxIter": 103,"print_level":0,"derivative_test":"first-order"}).iteritems():
@@ -801,16 +891,16 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_x"],DM([0]*10),8,str(Solver),digits=8)
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][1],0,8,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
   def test_IPOPTnoc(self):
     self.message("trivial IPOPT, no constraints")
     """ There is an assertion error thrown, but still it works"""
     x=SX.sym("x")
     nlp={'x':x, 'f':(x-1)**2}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "snopt"==Solver: continue
-      self.message(str(Solver))
+      print("test_IPOPTnoc",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       # ({"tol":1e-8,"max_iter":103, "MaxIter": 103,"print_level":0,"derivative_test":"first-order"}).iteritems():
@@ -821,16 +911,16 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["f"][0],0,10,str(Solver))
       self.assertAlmostEqual(solver_out["x"][0],1,7,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTmx(self):
     self.message("trivial IPOPT, using MX")
     x=MX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':2*x}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTmx",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -844,16 +934,16 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["f"][0],0,10,str(Solver))
       self.assertAlmostEqual(solver_out["x"][0],1,9,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTc(self):
     self.message("trivial, overconstrained")
     x=SX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':vertcat(*[x,x,x])}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTc",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]
@@ -864,16 +954,16 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["f"][0],0,9,str(Solver) )
       self.assertAlmostEqual(solver_out["x"][0],1,5,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTc2(self):
     self.message("trivial2, overconstrained")
     x=SX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':vertcat(*[x,x,x+x])}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTc2",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]
@@ -884,15 +974,15 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["f"][0],0,10,str(Solver))
       self.assertAlmostEqual(solver_out["x"][0],1,8,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
   def test_IPOPTcmx(self):
     self.message("trivial , overconstrained, using MX")
     x=MX.sym("x")
     nlp={'x':x, 'f':(x-1)**2, 'g':vertcat(*[2*x,3*x,4*x])}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTcmx",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10]
@@ -903,16 +993,16 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["f"][0],0,9,str(Solver))
       self.assertAlmostEqual(solver_out["x"][0],1,8,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTdeg(self):
     self.message("degenerate optimization IPOPT")
     x=SX.sym("x")
     y=SX.sym("y")
     nlp={'x':vertcat(*[x,y]), 'f':0, 'g':vertcat(*[x-y,x])}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTdeg",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10, -10]
@@ -922,8 +1012,8 @@ class NLPtests(casadiTestCase):
       solver_out = solver(**solver_in)
       self.assertAlmostEqual(solver_out["x"][0],solver_out["x"][1],4 if "sqic" in str(solver_options) else 10,"IPOPT")
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_IPOPTdegc(self):
     self.message("degenerate optimization IPOPT, overconstrained")
@@ -931,8 +1021,8 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
     nlp={'x':vertcat(*[x,y]), 'f':0, 'g':vertcat(*[x-y,x,x+y])}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_IPOPTdegc",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=[-10, -10]
@@ -943,8 +1033,8 @@ class NLPtests(casadiTestCase):
       # todo: catch error when set([0, 3 , 5]) two times
       self.assertAlmostEqual(solver_out["x"][0],solver_out["x"][1],4 if "sqic" in str(solver_options) else 10,"IPOPT")
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_XfreeChange(self):
     self.message("Change in X settings")
@@ -952,8 +1042,8 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_XfreeChange",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0,1]
@@ -975,8 +1065,8 @@ class NLPtests(casadiTestCase):
       self.assertAlmostEqual(solver_out["f"][0],0,9,str(Solver))
       self.assertAlmostEqual(solver_out["x"][0],1,6,str(Solver))
       self.assertAlmostEqual(solver_out["x"][1],1,6,str(Solver))
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_activeLBX(self):
     self.message("active LBX")
@@ -984,8 +1074,8 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
-      self.message(Solver)
+    for Solver, solver_options, aux_options in solvers:
+      print("test_activeLBX",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0,1]
@@ -1010,16 +1100,16 @@ class NLPtests(casadiTestCase):
         if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],-8.6963632695079e-2,4,str(Solver))
         if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,8,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
   def test_activeLBG(self):
     self.message("active LBG")
     x=SX.sym("x")
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_activeLBG",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0,1]
@@ -1036,8 +1126,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,4,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],-4.1644422845712e-2,3,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_activeUBG(self):
     self.message("active UBG")
@@ -1045,8 +1135,8 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_activeUBG",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0,1]
@@ -1063,8 +1153,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,4,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],4.75846495145007e-2,5,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_activeUBX(self):
     self.message("active UBX")
@@ -1072,8 +1162,8 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
 
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+100*(y-x**2)**2, 'g':x+y}
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
+      print("test_activeUBX",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["x0"]=[0,1]
@@ -1089,8 +1179,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],5.39346608659e-2,4,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_g"][0],0,8,str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
   @memory_heavy()
   def test_QP(self):
     self.message("QP")
@@ -1103,10 +1193,10 @@ class NLPtests(casadiTestCase):
     obj = 0.5*mtimes([(x-x0).T,H,(x-x0)])
 
     nlp = {'x':x, 'f':obj}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "snopt"==Solver: continue
-      self.message(str(Solver))
       if Solver=="sqpmethod" and "limited-memory" in str(solver_options): continue
+      print("test_QP",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
       solver_in["lbx"]=-1000
@@ -1130,8 +1220,8 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x",2)
     nlp={'x':x, 'f':0.5*mtimes([x.T,H,x])+mtimes(G.T,x), 'g':mtimes(A,x)}
 
-    for Solver, solver_options, features in solvers:
-      self.message(Solver)
+    for Solver, solver_options, aux_options in solvers:
+      print("test_QP2",Solver,solver_options)
       options = dict(solver_options)
       if "ipopt" in str(Solver):
         options["ipopt.fixed_variable_treatment"] = "make_constraint"
@@ -1157,8 +1247,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_g"],DM([0,2,0]),str(Solver),digits=6)
 
       self.assertAlmostEqual(solver_out["f"][0],-7.4375,6,str(Solver))
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
       solver = nlpsol("mysolver", Solver, nlp, options)
       solver_in["lbx"]=LBX
@@ -1177,8 +1267,8 @@ class NLPtests(casadiTestCase):
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_g"],DM([0,2,0]),str(Solver),digits=6)
 
       self.assertAlmostEqual(solver_out["f"][0],-7.4375,6,str(Solver))
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_QP2_unconvex(self):
     H = DM([[1,-1],[-1,-2]])
@@ -1194,8 +1284,8 @@ class NLPtests(casadiTestCase):
     x=SX.sym("x",2)
     nlp={'x':x, 'f':0.5*mtimes([x.T,H,x])+mtimes(G.T,x), 'g':mtimes(A,x)}
 
-    for Solver, solver_options, features in solvers:
-      self.message(Solver)
+    for Solver, solver_options, aux_options in solvers:
+      print("test_QP2_unconvex",Solver,solver_options)
       options = dict(solver_options)
       if "ipopt" in str(Solver):
         options["ipopt.fixed_variable_treatment"] = "make_constraint"
@@ -1221,9 +1311,8 @@ class NLPtests(casadiTestCase):
 
       self.assertAlmostEqual(solver_out["f"][0],-10-16.0/9,6,str(solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
-
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
       solver = nlpsol("mysolver", Solver, nlp, options)
 
       solver_in["lbx"]=LBX
@@ -1243,8 +1332,8 @@ class NLPtests(casadiTestCase):
 
       self.assertAlmostEqual(solver_out["f"][0],-10-16.0/9,6,str(solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_bug(self):
     x = MX.sym("x", 3)
@@ -1256,9 +1345,10 @@ class NLPtests(casadiTestCase):
     b = aa[3:]
     f_call = f(a, b)
     nlp = {'x':aa, 'f':f_call}
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "worhp" in Solver: continue
       if "snopt"==Solver: continue
+      print("test_bug",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -1266,7 +1356,8 @@ class NLPtests(casadiTestCase):
     x = MX.sym("x")
     p = MX.sym("p")
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_missing_symbols",Solver,solver_options)
       with self.assertInException("[p] are free"):
         solver = nlpsol("solver",Solver,{"x":x,"f":(x-p)**2}, solver_options)
 
@@ -1277,7 +1368,8 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
 
     f = (1-x)**2+100*(y-x**2)**2
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
+      print("test_no_success",Solver,solver_options)
       solver = nlpsol("solver","ipopt",{'x':vertcat(x,y), 'f':f,'g':vertcat(x+1,x-2)})
       solver(x0=0,lbg=0,ubg=0)
       self.assertFalse(solver.stats()["success"])
@@ -1377,10 +1469,10 @@ class NLPtests(casadiTestCase):
     y=SX.sym("y")
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+y**2}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "snopt"==Solver: continue
-      self.message(str(Solver))
       if "worhp"==Solver or "stabilizedsqp"==Solver : continue
+      print("test_pathological",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -1394,17 +1486,17 @@ class NLPtests(casadiTestCase):
       self.checkarray(solver_out["x"],DM([1,0]),digits=7,failmessage=str(Solver))
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_x"],DM([0,-0]),digits=7,failmessage=str(Solver))
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_pathological2(self):
     x=SX.sym("x")
     y=SX.sym("y")
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2+y}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "snopt"==Solver: continue
-      self.message(Solver)
+      print("test_pathological2",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -1418,17 +1510,17 @@ class NLPtests(casadiTestCase):
       self.checkarray(solver_out["x"],DM([1,0]),digits=7)
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_x"],DM([0,-1]),digits=7)
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_pathological3(self):
     x=SX.sym("x")
     y=SX.sym("y")
     nlp={'x':vertcat(*[x,y]), 'f':(1-x)**2, 'g':x+y}
 
-    for Solver, solver_options, features in solvers:
-      self.message(str(Solver))
+    for Solver, solver_options, aux_options in solvers:
       if "worhp"==Solver: continue
+      print("test_pathological3",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -1444,17 +1536,17 @@ class NLPtests(casadiTestCase):
       self.checkarray(solver_out["x"],DM([1,1]),digits=7)
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_x"],DM([0,0]),digits=7)
 
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_pathological4(self):
     x=SX.sym("x")
     nlp={'x':x, 'f':x*x}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "snopt"==Solver: continue
-      self.message(Solver)
       if "worhp"==Solver: continue
+      print("test_pathological4",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       solver_in = {}
 
@@ -1467,8 +1559,8 @@ class NLPtests(casadiTestCase):
       self.checkarray(solver_out["f"],DM([0]),digits=7)
       self.checkarray(solver_out["x"],DM([0]),digits=7)
       if "bonmin" not in str(Solver): self.checkarray(solver_out["lam_x"],DM([0]),digits=7)
-      if "codegen" in features:
-        self.check_codegen(solver,solver_in,std="c99")
+      if aux_options["codegen"]:
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   def test_nlp_sensitivity(self):
 
@@ -1477,12 +1569,14 @@ class NLPtests(casadiTestCase):
 
     nlp = {"x":x,"p":p,"f":(sin(x)-p**2)**2,"g":x}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       if "ipopt" in str(solver_options): continue
+      if "snopt" in str(solver_options): continue
+      if Solver in ["alpaqa"]: continue
       if "knitro" in str(Solver):
         solver_options = copy.deepcopy(solver_options)
         solver_options["knitro"]["algorithm"] = 4 # sqp
-
+      print("test_nlp_sensitivity",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       print("foo",Solver,solver(lbg=0,x0=0,p=0.5))
 
@@ -1550,6 +1644,22 @@ class NLPtests(casadiTestCase):
     self.assertTrue(stats_reg["iter_count"]==1)
     self.assertTrue("H:\n[[1, 0], \n [0, 2]]" in result[0])
 
+  def test_infeasible(self):
+    x = MX.sym("x")
+
+    nlp = {"f":x**2,"x":x,"g":sin(x)}
+
+    for Solver, solver_options, aux_options in solvers:
+        myoptions = dict(solver_options)
+        myoptions["error_on_fail"] = True
+        if Solver=="sqpmethod": continue
+        solver = nlpsol("solver",Solver,nlp,myoptions)
+        
+        if aux_options["codegen"] and args.run_slow:
+          [F,_] = self.check_codegen(solver,dict(lbg=-10,ubg=10),**aux_options["codegen"])
+          with self.assertRaises(RuntimeError):
+            F(lbg=5,ubg=10)
+
   def test_indefinite(self):
 
     # Test problem that is indefinite in direction of the constraint Jacobian
@@ -1558,19 +1668,19 @@ class NLPtests(casadiTestCase):
 
     nlp = {"x":x,"f":f,"g":x[1]}
 
-    for Solver, solver_options, features in solvers:
+    for Solver, solver_options, aux_options in solvers:
       solver_in = {"lbg": 2, "ubg": 2}
-
+      print("test_indefinite",Solver,solver_options)
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
       out = solver(**solver_in)
       self.checkarray(out["x"],DM([0,2]),digits=6)
       if "bonmin" not in str(Solver): self.checkarray(out["lam_g"],DM([4]),digits=6)
 
-      if "codegen" in features:
+      if aux_options["codegen"]:
         solver.generate('f.c',{"main":True})
         solver.generate_in("in.dat",solver.convert_in(solver_in))
         print(solver_in)
-        self.check_codegen(solver,solver_in,std="c99")
+        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   @requires_nlpsol("sqpmethod")
   def test_gauss_newton_sqpmethod(self):
@@ -1823,9 +1933,59 @@ class NLPtests(casadiTestCase):
       self.checkarray(b[0].T,[3,7])
       self.checkarray(b[1],G[i,:])
       self.checkarray(b[1],c[1])
+      
+  @memory_heavy()
+  def test_simple_bounds_detect_solvers(self):
+  
+    for Solver, solver_options, aux_options in solvers:
+        print(Solver,solver_options)
+      
+        x = MX.sym("x",5)
+        
+        # different a, b
 
+
+        g = [
+          (1.1,  x[0]*x[1], 2),
+          (-11,  x[4], 2), # 4 H
+          (-10,  x[0], 10),
+          (-5,  x[0], 2), # 0 H
+          (-4,  x[0], 4), # 0 L
+          (1.1,  x[4]*x[1], 2),
+          (0,  x[4], inf), # 4 L
+          (3,  x[2], 3), # 2 LH
+          (-4,  x[2], 40),
+          (2,  x[1], 2), # 1 LH
+          (-4,  x[0], 4), # 0 L
+          (-4,  x[1], 9)] # 1 H
+
+        [lbg,g,ubg]= zip(*g)
+
+        lbg = vcat(lbg)
+        ubg = vcat(ubg)
+        g = vcat(g)
+        
+        I = densify(DM.eye(5))
+
+        for lbx,ubx in [(-DM.inf(5),DM.inf(5))]:#,(-3*DM.ones(5),3*DM.ones(5)),(-4*DM.ones(5),4*DM.ones(5))]:
+        
+            for i in range(3):#range(5):
+                for sign in [-1,1]:
+                    x_target = I[:,i]*sign*20
+                    
+                    nlp = {"x":x,"g":g,"f":sumsqr(x-x_target)}
+                    
+                    my_solver_options = dict(solver_options)
+                    my_solver_options["detect_simple_bounds"] = True
+                    
+                    solver = nlpsol("mysolver", Solver, nlp, my_solver_options)
+                    solver_in = dict(lbg=lbg,ubg=ubg,lbx=lbx,ubx=ubx)
+                    
+                    if aux_options["codegen"]:
+                        self.check_codegen(solver,solver_in,**aux_options["codegen"])
 
   @memory_heavy()
+  @requires_nlpsol("ipopt")
   def test_simple_bounds_detect2(self):
     x = MX.sym("x",5)
     p = MX.sym("p",5)
@@ -1964,7 +2124,7 @@ class NLPtests(casadiTestCase):
     for solver in solvers:
         for elastic_mode in elastic_modes:
             for so_mode in so_modes:
-                outcomes_encountered = set()
+                outcomes_encountered = {"codegen": False}
                 for file_name in file_names:
                     mode = (solver,elastic_mode,so_mode)
                     
@@ -2006,6 +2166,24 @@ class NLPtests(casadiTestCase):
 
 
     #results.to_csv('hock_schittkowski/results.csv',index=False)
+
+  def test_exception_in_oraclefunction(self):
+    x=MX.sym("x")
+    x_fail = x.attachAssert(x!=x,"Cuckoo")
+    nlp={'x':x, 'f':(x-1)**2, 'g':x_fail}
+        
+    for Solver, solver_options, aux_options in solvers:
+      
+      print("test_exception_in_oraclefunction",Solver,solver_options)
+      solver = nlpsol("mysolver", Solver, nlp, solver_options)
+      solver_in = {}
+
+      solver_in["lbx"]=[-10]
+      solver_in["ubx"]=[10]
+      solver_in["lbg"]=[-10]
+      solver_in["ubg"]=[10]
+      with self.assertInAnyOutput("Cuckoo"):
+        solver_out = solver(**solver_in)
             
 if __name__ == '__main__':
     unittest.main()

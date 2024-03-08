@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -253,8 +253,11 @@ namespace casadi {
       *it = (*it)(Slice(), ind); // NOLINT
     }
 
+    Dict options = opts;
+    options["allow_duplicate_io_names"] = true;
+
     // Construct return function
-    return Function(name, arg, res, inames, onames, opts);
+    return Function(name, arg, res, inames, onames, options);
   }
 
   Function Map
@@ -304,8 +307,11 @@ namespace casadi {
       *it = (*it)(Slice(), ind); // NOLINT
     }
 
+    Dict options = opts;
+    options["allow_duplicate_io_names"] = true;
+
     // Construct return function
-    return Function(name, arg, res, inames, onames, opts);
+    return Function(name, arg, res, inames, onames, options);
   }
 
   int Map::eval(const double** arg, double** res, casadi_int* iw, double* w, void* mem) const {

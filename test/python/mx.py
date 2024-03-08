@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -1165,6 +1165,27 @@ class MXtests(casadiTestCase):
         T2 = t2!=0
         f_out = f([t1,t2])
         self.checkarray(f_out,DM([T1 and T2,T1 or T2,not T1]),"bool(%d,%d): %s" % (t1,t2,str(f_out)))
+  
+  def test_short_circuiting_codegen(self):
+    x = MX.sym('x', 5)
+
+    y = if_else(x > 0, 0, x)
+
+    f = Function('f', [x], [y], ['x'], ['y'])
+    
+    self.check_codegen(f,inputs=[vertcat(-200, 200, -100, 100, 0)])
+
+    x = MX.sym('x', 8)
+    y = MX.sym('y', 8)
+    
+    z = logic_and(x,y)
+    z2 = logic_or(x,y)
+
+    f = Function('f', [x,y], [z,z2])
+    
+    self.check_codegen(f,inputs=[vertcat(0, 1, 0, 1, 0, 1, 0, 1),vertcat(0, 0, 1, 1, 0, 0, 1, 1)])
+
+
 
   def test_MXineq(self):
     self.message("SX ineq")
@@ -2312,10 +2333,10 @@ class MXtests(casadiTestCase):
   def test_expand_free(self):
     x = MX.sym("x")
     y = MX.sym("y")
-    f = Function('f',[x],[x+y])
     with self.assertInException("free"):
-      f.expand()
+      f = Function('f',[x],[x+y])
 
+    f = Function('f',[x],[x+y],{"allow_free": True})
     g = Function('g',[x,y],[f(x)])
     ge = g.expand()
     self.checkfunction(g,g,inputs=[1,2])
@@ -2616,6 +2637,21 @@ class MXtests(casadiTestCase):
       self.checkfunction(f,fref,inputs=[x0,y0,z0])
       self.checkfunction(f_sx,fref,inputs=[x0,y0,z0])
       self.check_codegen(f,inputs=[x0,y0,z0])
+      
+  def test_bilin_short(self):
+    for X in [SX,MX]:
+        x = X.sym("x",3,3)
+        y = X.sym("y",3,1)
+
+        import numpy
+        numpy.random.seed(42)
+        x0 = numpy.random.random((3,3))
+        y0 = numpy.random.random((3,1))
+        
+        f = Function("f",[x,y],[bilin(x,y)])
+        fref = Function("f",[x,y],[bilin(x,y,y)])
+        
+        self.checkfunction(f,fref,inputs=[x0,y0])
 
   def test_det_shape(self):
     X = MX.sym("x",2,3)
@@ -3049,6 +3085,36 @@ class MXtests(casadiTestCase):
 
     self.checkfunction(f,f.expand(),inputs=[DM([[1,2],[3,4]]),DM([[5,6],[7,8]])])
     self.checkfunction(f,f_alt,inputs=[DM([[1,2],[3,4]]),DM([[5,6],[7,8]])])
+
+  def test_sparsity_cast_ad(self):
+    #issue 3164
+
+    y = MX.sym("y",3)
+
+    xy = vertcat(y[0],y[1])
+    w = mtimes(MX(sparsify(DM([1,1,0])).sparsity().T,xy),y)
+    
+    f = Function('f',[y],[w])
+    self.checkfunction(f,f.expand(), inputs=[vertcat(1.1,1.3,1.7)])
+
+
+  def test_fractional_slicing(self):
+
+    t = MX.sym("x")
+
+    f = Function('f',[t],[MX(DM([1,2]))[t]])
+
+    self.assertEqual(f(0),1)
+    self.assertEqual(f(1),2)
+    self.assertEqual(f(0.5),1)
+    self.assertEqual(f(0.9),1)
+    
+    f = Function('f',[t],[MX(DM([[1,2],[3,4]]))[:,t]])
+
+    self.checkarray(f(0),DM([1,3]))
+    self.checkarray(f(1),DM([2,4]))
+    self.checkarray(f(0.5),DM([1,3]))
+    self.checkarray(f(0.9),DM([1,3]))
 
 if __name__ == '__main__':
     unittest.main()

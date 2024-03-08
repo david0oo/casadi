@@ -1,4 +1,22 @@
-// NOLINT(legal/copyright)
+//
+//    MIT No Attribution
+//
+//    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl, KU Leuven.
+//
+//    Permission is hereby granted, free of charge, to any person obtaining a copy of this
+//    software and associated documentation files (the "Software"), to deal in the Software
+//    without restriction, including without limitation the rights to use, copy, modify,
+//    merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+//    permit persons to whom the Software is furnished to do so.
+//
+//    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+//    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+//    PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+//    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+//    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+//    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
 // C-REPLACE "casadi_qp_prob<T1>" "struct casadi_qp_prob"
 // C-REPLACE "casadi_qp_data<T1>" "struct casadi_qp_data"
 
@@ -158,7 +176,7 @@ struct casadi_hpipm_data {
 // C-REPLACE "casadi_hpipm_data<T1>" "struct casadi_hpipm_data"
 
 
-// SYMBOL "qp_work"
+// SYMBOL "hpipm_work"
 template<typename T1>
 void casadi_hpipm_work(const casadi_hpipm_prob<T1>* p, casadi_int* sz_arg, casadi_int* sz_res, casadi_int* sz_iw, casadi_int* sz_w) {
   casadi_qp_work(p->qp, sz_arg, sz_res, sz_iw, sz_w);
@@ -227,9 +245,9 @@ void casadi_hpipm_work(const casadi_hpipm_prob<T1>* p, casadi_int* sz_arg, casad
 
 }
 
-// SYMBOL "qp_init"
+// SYMBOL "hpipm_set_work"
 template<typename T1>
-void casadi_hpipm_init(casadi_hpipm_data<T1>* d, const T1*** arg, T1*** res, casadi_int** iw, T1** w) {
+void casadi_hpipm_set_work(casadi_hpipm_data<T1>* d, const T1*** arg, T1*** res, casadi_int** iw, T1** w) {
   // Local variables
   casadi_int offset, i, k;
   
@@ -432,9 +450,9 @@ int casadi_hpipm_solve(casadi_hpipm_data<T1>* d, const double** arg, double** re
     // replace infinities
     casadi_clip_min(d->lbx, p->nx_total, -p->inf, 0);
     casadi_clip_min(d->lbu, p->nu_total, -p->inf, 0);
-    casadi_clip_min(d->lg,  p->nu_total, -p->inf, 0); // count?
+    casadi_clip_min(d->lg,  p->ng_total, -p->inf, 0); // count?
     casadi_clip_max(d->ubx, p->nx_total, p->inf, 0);
-    casadi_clip_max(d->ubu, p->ng_total, p->inf, 0);
+    casadi_clip_max(d->ubu, p->nu_total, p->inf, 0);
     casadi_clip_max(d->ug,  p->ng_total, p->inf, 0); // count?
 
 

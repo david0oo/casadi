@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -136,7 +136,7 @@ namespace casadi {
     std::vector<MX> arg;
     for (auto& sp : output_sparsity_)
       arg.push_back(MX::sym("x", sp));
-    Function output("output", std::vector<MX>{}, arg);
+    Function output("output", std::vector<MX>{}, arg, {{"allow_free", true}});
     return {{"offset", offset_}, {"output", output}};
   }
 

@@ -3,7 +3,7 @@
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
  *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl, Kobe Bergmans
- *                            K.U. Leuven. All rights reserved.
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -41,6 +41,7 @@
 #include "conic_impl.hpp"
 #include "integrator_impl.hpp"
 #include "external_impl.hpp"
+#include "fmu_function.hpp"
 
 #include <cctype>
 #include <typeinfo>
@@ -85,7 +86,7 @@ namespace casadi {
     jit_serialize_ = "source";
     jit_base_name_ = "jit_tmp";
     jit_temp_suffix_ = true;
-    compiler_plugin_ = "clang";
+    compiler_plugin_ = CASADI_STR(CASADI_DEFAULT_COMPILER_PLUGIN);
 
     eval_ = nullptr;
     checkout_ = nullptr;
@@ -317,6 +318,10 @@ namespace casadi {
       {"jacobian_options",
        {OT_DICT,
         "Options to be passed to a Jacobian constructor"}},
+      {"der_options",
+       {OT_DICT,
+        "Default options to be used to populate forward_options, reverse_options, and "
+        "jacobian_options before those options are merged in."}},
       {"custom_jacobian",
        {OT_FUNCTION,
         "Override CasADi's AD. Use together with 'jac_penalty': 0. "
@@ -332,7 +337,13 @@ namespace casadi {
         "After construction, expand this Function. Default: False"}},
       {"post_expand_options",
        {OT_DICT,
-        "Options to be passed to post-construction expansion. Default: empty"}}
+        "Options to be passed to post-construction expansion. Default: empty"}},
+      {"cache",
+       {OT_DICT,
+        "Prepopulate the function cache. Default: empty"}},
+      {"external_transform",
+       {OT_VECTORVECTOR,
+        "List of external_transform instruction arguments. Default: empty"}}
      }
   };
 
@@ -387,6 +398,8 @@ namespace casadi {
       opts["enable_fd"] = enable_fd_op_;
       opts["reverse_options"] = reverse_options_;
       opts["forward_options"] = forward_options_;
+      opts["jacobian_options"] = jacobian_options_;
+      opts["der_options"] = der_options_;
       opts["derivative_of"] = derivative_of_;
     }
     opts["fd_options"] = fd_options_;
@@ -507,6 +520,8 @@ namespace casadi {
         reverse_options_ = op.second;
       } else if (op.first=="jacobian_options") {
         jacobian_options_ = op.second;
+      } else if (op.first=="der_options") {
+        der_options_ = op.second;
       } else if (op.first=="custom_jacobian") {
         custom_jacobian_ = op.second.to_function();
         casadi_assert(custom_jacobian_.name() == "jac_" + name_,
@@ -520,6 +535,8 @@ namespace casadi {
         is_diff_in_ = op.second;
       } else if (op.first=="is_diff_out") {
         is_diff_out_ = op.second;
+      } else if (op.first=="cache") {
+        cache_init_ = op.second;
       }
     }
 
@@ -597,6 +614,17 @@ namespace casadi {
     } else {
       casadi_assert(name_out_.size()==n_out_, "Function " + name_ + " has " + str(n_out_)
         + " outputs, but name_out has length " + str(name_out_.size()) + ".");
+    }
+
+    // Prepopulate function cache
+    for (auto&& c : cache_init_) {
+      const Function& f = c.second;
+      if (c.first != f.name()) {
+        casadi_warning("Cannot add '" + c.first + "' a.k.a. '" + f.name()
+          + "' to cache. Mismatching names not implemented.");
+      } else {
+        tocache(f);
+      }
     }
 
     // Allocate memory for function inputs and outputs
@@ -728,44 +756,29 @@ namespace casadi {
   }
 
   void FunctionInternal::dump_in(casadi_int id, const double** arg) const {
-    #ifdef _WIN32
-    const std::string filesep("\\");
-    #else
-    const std::string filesep("/");
-    #endif
     std::stringstream ss;
     ss << std::setfill('0') << std::setw(6) << id;
     std::string count = ss.str();
     for (casadi_int i=0;i<n_in_;++i) {
-      DM::to_file(dump_dir_+ filesep + name_ + "." + count + ".in." + name_in_[i] + "." +
+      DM::to_file(dump_dir_+ filesep() + name_ + "." + count + ".in." + name_in_[i] + "." +
         dump_format_, sparsity_in_[i], arg[i]);
     }
-    generate_in(dump_dir_+ filesep + name_ + "." + count + ".in.txt", arg);
+    generate_in(dump_dir_+ filesep() + name_ + "." + count + ".in.txt", arg);
   }
 
   void FunctionInternal::dump_out(casadi_int id, double** res) const {
-    #ifdef _WIN32
-    const std::string filesep("\\");
-    #else
-    const std::string filesep("/");
-    #endif
     std::stringstream ss;
     ss << std::setfill('0') << std::setw(6) << id;
     std::string count = ss.str();
     for (casadi_int i=0;i<n_out_;++i) {
-      DM::to_file(dump_dir_+ filesep + name_ + "." + count + ".out." + name_out_[i] + "." +
+      DM::to_file(dump_dir_+ filesep() + name_ + "." + count + ".out." + name_out_[i] + "." +
         dump_format_, sparsity_out_[i], res[i]);
     }
-    generate_out(dump_dir_+ filesep + name_ + "." + count + ".out.txt", res);
+    generate_out(dump_dir_+ filesep() + name_ + "." + count + ".out.txt", res);
   }
 
   void FunctionInternal::dump() const {
-    #ifdef _WIN32
-    const std::string filesep("\\");
-    #else
-    const std::string filesep("/");
-    #endif
-    shared_from_this<Function>().save(dump_dir_+ filesep + name_ + ".casadi");
+    shared_from_this<Function>().save(dump_dir_+ filesep() + name_ + ".casadi");
   }
 
   casadi_int FunctionInternal::get_dump_id() const {
@@ -938,9 +951,29 @@ namespace casadi {
     }
   }
 
+  Dict FunctionInternal::cache() const {
+    // Return value
+    Dict ret;
+    // Add all Function instances that haven't been deleted
+    for (auto&& cf : cache_) {
+      if (cf.second.alive()) {
+        // Get the name of the key
+        std::string s = cf.first;
+        casadi_assert_dev(s.size() > 0);
+        // Replace ':' with '_'
+        std::replace(s.begin(), s.end(), ':', '_');
+        // Remove trailing underscore, if any
+        if (s.back() == '_') s.resize(s.size() - 1);
+        // Add entry to function return
+        ret[s] = shared_cast<Function>(cf.second.shared());
+      }
+    }
+    return ret;
+  }
+
   bool FunctionInternal::incache(const std::string& fname, Function& f,
       const std::string& suffix) const {
-    auto it = cache_.find(fname+":"+suffix);
+    auto it = cache_.find(fname + ":" + suffix);
     if (it!=cache_.end() && it->second.alive()) {
       f = shared_cast<Function>(it->second.shared());
       return true;
@@ -951,7 +984,7 @@ namespace casadi {
 
   void FunctionInternal::tocache(const Function& f, const std::string& suffix) const {
     // Add to cache
-    cache_.insert(std::make_pair(f.name()+":"+suffix, f));
+    cache_.insert(std::make_pair(f.name() + ":" + suffix, f));
     // Remove a lost reference, if any, to prevent uncontrolled growth
     for (auto it = cache_.begin(); it!=cache_.end(); ++it) {
       if (!it->second.alive()) {
@@ -1779,11 +1812,6 @@ namespace casadi {
           sp = get_jac_sparsity_gen<false>(oind, iind);
         }
       }
-      // There may be false positives here that are not present
-      // in the reverse mode that precedes it.
-      // This can lead to an assymetrical result
-      //  cf. #1522
-      if (symmetric) sp=sp*sp.T();
       return sp;
     } else {
       // Not calculated
@@ -1859,6 +1887,20 @@ namespace casadi {
         }
       }
     }
+
+    // Make sure the Jacobian is symmetric if requested, cf. #1522, #3074, #3134
+    if (symmetric) {
+      if (compact) {
+        Sparsity sp = from_compact(oind, iind, jsp);
+        if (!sp.is_symmetric()) {
+          sp = sp * sp.T();
+          jsp = to_compact(oind, iind, sp);
+        }
+      } else {
+        if (!jsp.is_symmetric()) jsp = jsp * jsp.T();
+      }
+    }
+
     // Return a reference to the block
     return jsp;
   }
@@ -1971,6 +2013,42 @@ namespace casadi {
     casadi_error("'eval_sx' not defined for " + class_name());
   }
 
+  std::string FunctionInternal::diff_prefix(const std::string& prefix) const {
+    // Highest index found in current inputs and outputs
+    casadi_int highest_index = 0;
+    // Loop over both input names and output names
+    for (const std::vector<std::string>& name_io : {name_in_, name_out_}) {
+      for (const std::string& n : name_io) {
+        // Find end of prefix, skip if no prefix
+        size_t end = n.find('_');
+        if (end >= n.size()) continue;
+        // Skip if too short
+        if (end < prefix.size()) continue;
+        // Skip if wrong prefix
+        if (n.compare(0, prefix.size(), prefix) != 0) continue;
+        // Beginning of index
+        size_t begin = prefix.size();
+        // Check if any index
+        casadi_int this_index;
+        if (begin == end) {
+          // No prefix, implicitly 1
+          this_index = 1;
+        } else {
+          // Read index from string
+          this_index = std::stoi(n.substr(begin, end - begin));
+        }
+        // Find the highest index
+        if (this_index > highest_index) highest_index = this_index;
+      }
+    }
+    // Return one higher index
+    if (highest_index == 0) {
+      return prefix + "_";
+    } else {
+      return prefix + std::to_string(highest_index + 1) + "_";
+    }
+  }
+
   Function FunctionInternal::forward(casadi_int nfwd) const {
     casadi_assert_dev(nfwd>=0);
     // Used wrapped function if forward not available
@@ -1981,19 +2059,22 @@ namespace casadi {
     }
     // Retrieve/generate cached
     Function f;
-    std::string fname = "fwd" + str(nfwd) + "_" + name_;
+    std::string fname = forward_name(name_, nfwd);
     if (!incache(fname, f)) {
       casadi_int i;
+      // Prefix to be used for forward seeds, sensitivities
+      std::string pref = diff_prefix("fwd");
       // Names of inputs
       std::vector<std::string> inames;
       for (i=0; i<n_in_; ++i) inames.push_back(name_in_[i]);
       for (i=0; i<n_out_; ++i) inames.push_back("out_" + name_out_[i]);
-      for (i=0; i<n_in_; ++i) inames.push_back("fwd_" + name_in_[i]);
+      for (i=0; i<n_in_; ++i) inames.push_back(pref + name_in_[i]);
       // Names of outputs
       std::vector<std::string> onames;
-      for (i=0; i<n_out_; ++i) onames.push_back("fwd_" + name_out_[i]);
+      for (i=0; i<n_out_; ++i) onames.push_back(pref + name_out_[i]);
       // Options
-      Dict opts = combine(forward_options_, generate_options("forward"));
+      Dict opts = combine(forward_options_, der_options_);
+      opts = combine(opts, generate_options("forward"));
       if (!enable_forward_) opts = fd_options_;
       opts["derivative_of"] = self();
       // Generate derivative function
@@ -2022,7 +2103,7 @@ namespace casadi {
       for (i=0; i<n_in_; ++i) f.assert_size_in(ind++, size1_in(i), nfwd*size2_in(i));
       // Consistency check for outputs
       casadi_assert_dev(f.n_out()==n_out_);
-      for (i=0; i<n_out_; ++i) f.assert_size_out(i, size1_out(i), nfwd*size2_out(i));
+      for (i=0; i<n_out_; ++i) f.assert_sparsity_out(i, sparsity_out(i), nfwd);
       // Save to cache
       tocache(f);
     }
@@ -2039,19 +2120,22 @@ namespace casadi {
     }
     // Retrieve/generate cached
     Function f;
-    std::string fname = "adj" + str(nadj) + "_" + name_;
+    std::string fname = reverse_name(name_, nadj);
     if (!incache(fname, f)) {
       casadi_int i;
+      // Prefix to be used for adjoint seeds, sensitivities
+      std::string pref = diff_prefix("adj");
       // Names of inputs
       std::vector<std::string> inames;
       for (i=0; i<n_in_; ++i) inames.push_back(name_in_[i]);
       for (i=0; i<n_out_; ++i) inames.push_back("out_" + name_out_[i]);
-      for (i=0; i<n_out_; ++i) inames.push_back("adj_" + name_out_[i]);
+      for (i=0; i<n_out_; ++i) inames.push_back(pref + name_out_[i]);
       // Names of outputs
       std::vector<std::string> onames;
-      for (casadi_int i=0; i<n_in_; ++i) onames.push_back("adj_" + name_in_[i]);
+      for (casadi_int i=0; i<n_in_; ++i) onames.push_back(pref + name_in_[i]);
       // Options
-      Dict opts = combine(reverse_options_, generate_options("reverse"));
+      Dict opts = combine(reverse_options_, der_options_);
+      opts = combine(opts, generate_options("reverse"));
       opts["derivative_of"] = self();
       // Generate derivative function
       casadi_assert_dev(enable_reverse_);
@@ -2064,7 +2148,7 @@ namespace casadi {
       for (i=0; i<n_out_; ++i) f.assert_size_in(ind++, size1_out(i), nadj*size2_out(i));
       // Consistency check for outputs
       casadi_assert_dev(f.n_out()==n_in_);
-      for (i=0; i<n_in_; ++i) f.assert_size_out(i, size1_in(i), nadj*size2_in(i));
+      for (i=0; i<n_in_; ++i) f.assert_sparsity_out(i, sparsity_in(i), nadj);
       // Save to cache
       tocache(f);
     }
@@ -2168,7 +2252,7 @@ namespace casadi {
         }
       }
       // Options
-      Dict opts = jacobian_options_;
+      Dict opts = combine(jacobian_options_, der_options_);
       opts["derivative_of"] = self();
       // Generate derivative function
       casadi_assert_dev(enable_jacobian_);
@@ -2218,6 +2302,22 @@ namespace casadi {
   std::string FunctionInternal::signature(const std::string& fname) const {
     return "int " + fname + "(const casadi_real** arg, casadi_real** res, "
                             "casadi_int* iw, casadi_real* w, int mem)";
+  }
+
+  std::string FunctionInternal::signature_unrolled(const std::string& fname) const {
+    std::vector<std::string> args;
+    for (auto e : name_in_) {
+      args.push_back("const casadi_real* " + str(e));
+    }
+    for (auto e : name_out_) {
+      args.push_back("casadi_real* " + str(e));
+    }
+    args.push_back("const casadi_real** arg");
+    args.push_back("casadi_real** res");
+    args.push_back("casadi_int* iw");
+    args.push_back("casadi_real* w");
+    args.push_back("int mem");
+    return "int " + fname + "_unrolled(" + join(args, ", ") + ")";
   }
 
   void FunctionInternal::codegen_init_mem(CodeGenerator& g) const {
@@ -2372,6 +2472,27 @@ namespace casadi {
       << "if (sz_w) *sz_w = " << sz_w_codegen << ";\n"
       << "return 0;\n"
       << "}\n\n";
+
+    // Function that returns work vector lengths in bytes
+    g << g.declare(
+        "int " + name_ + "_work_bytes(casadi_int *sz_arg, casadi_int* sz_res, "
+        "casadi_int *sz_iw, casadi_int *sz_w)")
+      << " {\n"
+      << "if (sz_arg) *sz_arg = " << sz_arg() << "*sizeof(const casadi_real*);\n"
+      << "if (sz_res) *sz_res = " << sz_res() << "*sizeof(casadi_real*);\n"
+      << "if (sz_iw) *sz_iw = " << sz_iw() << "*sizeof(casadi_int);\n"
+      << "if (sz_w) *sz_w = " << sz_w_codegen << "*sizeof(casadi_real);\n"
+      << "return 0;\n"
+      << "}\n\n";
+
+    // Also add to header file to allow getting
+     if (g.with_header) {
+      g.header
+        << "#define " << name_ << "_SZ_ARG " << sz_arg() << "\n"
+        << "#define " << name_ << "_SZ_RES " << sz_res() << "\n"
+        << "#define " << name_ << "_SZ_IW " << sz_iw() << "\n"
+        << "#define " << name_ << "_SZ_W " << sz_w() << "\n";
+     }
 
     // Which inputs are differentiable
     if (!all(is_diff_in_)) {
@@ -3416,7 +3537,7 @@ namespace casadi {
       if (init_mem(m)) {
         casadi_error("Failed to create or initialize memory object");
       }
-      return mem_.size()-1;
+      return static_cast<int>(mem_.size()) - 1;
     } else {
       // Use an unused memory object
       int m = unused_.top();
@@ -3466,8 +3587,9 @@ namespace casadi {
   std::vector<bool> FunctionInternal::
   which_depends(const std::string& s_in, const std::vector<std::string>& s_out,
       casadi_int order, bool tr) const {
-    casadi_error("'which_depends' not defined for " + class_name());
-    return std::vector<bool>();
+    Function f = shared_from_this<Function>();
+    f = f.wrap();
+    return f.which_depends(s_in, s_out, order, tr);
   }
 
   const Function& FunctionInternal::oracle() const {
@@ -3718,7 +3840,7 @@ namespace casadi {
 
   void FunctionInternal::serialize_body(SerializingStream& s) const {
     ProtoFunction::serialize_body(s);
-    s.version("FunctionInternal", 4);
+    s.version("FunctionInternal", 6);
     s.pack("FunctionInternal::is_diff_in", is_diff_in_);
     s.pack("FunctionInternal::is_diff_out", is_diff_out_);
     s.pack("FunctionInternal::sp_in", sparsity_in_);
@@ -3742,6 +3864,8 @@ namespace casadi {
     s.pack("FunctionInternal::jit_options", jit_options_);
     s.pack("FunctionInternal::compiler_plugin", compiler_plugin_);
     s.pack("FunctionInternal::has_refcount", has_refcount_);
+
+    s.pack("FunctionInternal::cache_init", cache_init_);
 
     s.pack("FunctionInternal::derivative_of", derivative_of_);
 
@@ -3777,6 +3901,8 @@ namespace casadi {
     s.pack("FunctionInternal::dump_format", dump_format_);
     s.pack("FunctionInternal::forward_options", forward_options_);
     s.pack("FunctionInternal::reverse_options", reverse_options_);
+    s.pack("FunctionInternal::jacobian_options", jacobian_options_);
+    s.pack("FunctionInternal::der_options", der_options_);
     s.pack("FunctionInternal::custom_jacobian", custom_jacobian_);
 
     s.pack("FunctionInternal::sz_arg_per", sz_arg_per_);
@@ -3790,7 +3916,7 @@ namespace casadi {
   }
 
   FunctionInternal::FunctionInternal(DeserializingStream& s) : ProtoFunction(s) {
-    int version = s.version("FunctionInternal", 1, 4);
+    int version = s.version("FunctionInternal", 1, 6);
     s.unpack("FunctionInternal::is_diff_in", is_diff_in_);
     s.unpack("FunctionInternal::is_diff_out", is_diff_out_);
     s.unpack("FunctionInternal::sp_in", sparsity_in_);
@@ -3827,6 +3953,10 @@ namespace casadi {
     s.unpack("FunctionInternal::jit_options", jit_options_);
     s.unpack("FunctionInternal::compiler_plugin", compiler_plugin_);
     s.unpack("FunctionInternal::has_refcount", has_refcount_);
+
+    if (version >= 6) {
+      s.unpack("FunctionInternal::cache_init", cache_init_);
+    }
 
     s.unpack("FunctionInternal::derivative_of", derivative_of_);
 
@@ -3870,6 +4000,10 @@ namespace casadi {
     dump_ = false;
     s.unpack("FunctionInternal::forward_options", forward_options_);
     s.unpack("FunctionInternal::reverse_options", reverse_options_);
+    if (version>=5) {
+      s.unpack("FunctionInternal::jacobian_options", jacobian_options_);
+      s.unpack("FunctionInternal::der_options", der_options_);
+    }
     s.unpack("FunctionInternal::custom_jacobian", custom_jacobian_);
     if (!custom_jacobian_.is_null()) {
       casadi_assert_dev(custom_jacobian_.name() == "jac_" + name_);
@@ -3925,6 +4059,7 @@ namespace casadi {
     {"Integrator", Integrator::deserialize},
     {"External", External::deserialize},
     {"Conic", Conic::deserialize},
+    {"FmuFunction", FmuFunction::deserialize},
   };
 
 } // namespace casadi

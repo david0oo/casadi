@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -29,6 +29,8 @@
 #include <set>
 #include <sstream>
 #include <unordered_map>
+#include <cstdint>
+#include <climits>
 
 namespace casadi {
   class Slice;
@@ -39,6 +41,7 @@ namespace casadi {
   class SXElem;
   class GenericType;
   class Importer;
+  class Fmu;
   class SharedObject;
   class SharedObjectInternal;
   class SXNode;
@@ -90,10 +93,15 @@ namespace casadi {
     }
     void unpack(Function& e);
     void unpack(Importer& e);
+    void unpack(Fmu& e);
     void unpack(GenericType& e);
     void unpack(std::ostream& s);
     void unpack(Slice& e);
     void unpack(int& e);
+
+#if SIZE_MAX != UINT_MAX
+    void unpack(unsigned int& e);
+#endif
     void unpack(bool& e);
     void unpack(casadi_int& e);
     void unpack(size_t& e);
@@ -223,10 +231,14 @@ namespace casadi {
     }
     void pack(const Function& e);
     void pack(const Importer& e);
+    void pack(const Fmu& e);
     void pack(const Slice& e);
     void pack(const GenericType& e);
     void pack(std::istream& s);
     void pack(int e);
+#if SIZE_MAX != UINT_MAX
+    void pack(unsigned int e);
+#endif
     void pack(bool e);
     void pack(casadi_int e);
     void pack(size_t e);

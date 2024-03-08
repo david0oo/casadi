@@ -2,8 +2,8 @@
 #     This file is part of CasADi.
 #
 #     CasADi -- A symbolic framework for dynamic optimization.
-#     Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
-#                             K.U. Leuven. All rights reserved.
+#     Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+#                             KU Leuven. All rights reserved.
 #     Copyright (C) 2011-2014 Greg Horn
 #
 #     CasADi is free software; you can redistribute it and/or
@@ -64,7 +64,10 @@ def run(args, input=None, cwd = None, shell = False, kill_tree = True, timeout =
         pass
     def alarm_handler(signum, frame):
         raise Alarm
-    p = Popen(args, shell = shell, cwd = cwd, stdout = PIPE, stderr = PIPE, env = env)
+    my_env = os.environ.copy()
+    if env is not None:
+        my_env.update(env)
+    p = Popen(args, shell = shell, cwd = cwd, stdout = PIPE, stderr = PIPE, env = my_env)
     if timeout != -1:
         if alarm_available:
             signal(SIGALRM, alarm_handler)
@@ -232,7 +235,9 @@ class TestSuite:
     print(("%02d. " % self.stats['numtests']) + fn)
     t0 = time.time()
 
-    p=Popen(self.command(dir,fn,self.passoptions),cwd=self.workingdir(dir),stdout=PIPE, stderr=PIPE, stdin=PIPE)
+    cmd = self.command(dir,fn,self.passoptions)
+    print(cmd)
+    p=Popen(cmd,cwd=self.workingdir(dir),stdout=PIPE, stderr=PIPE, stdin=PIPE)
 
     inp = None
     if callable(self.inputs):
@@ -242,8 +247,10 @@ class TestSuite:
     if fn in inputs:
       inp = inputs[fn]
 
+    if inp is not None:
+      inp = inp.encode("ascii")
 
-    alarm(60*60) # 1 hour
+    alarm(15*60) # 15 mins
     try:
       stdoutdata, stderrdata = p.communicate(inp)
     except TimeoutEvent:

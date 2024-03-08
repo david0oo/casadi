@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -64,7 +64,7 @@ namespace casadi {
       @copydoc plugin_Conic_highs
 
 
-      \author Felix Lenders, Attila Kozma, Joel Andersson
+      \author Felix Lenders, Ruud Kassing, Joris Gillis
       \date 2021
   */
   class CASADI_CONIC_HIGHS_EXPORT HighsInterface : public Conic {
@@ -157,8 +157,6 @@ namespace casadi {
 
     // Memory structure
     casadi_highs_prob<double> p_;
-
-    static std::list<std::string> param_bool;
 
     std::vector<int> colinda_, rowa_;
     std::vector<int> colindh_, rowh_;

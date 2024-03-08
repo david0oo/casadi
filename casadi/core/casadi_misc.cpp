@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -331,6 +331,7 @@ int simple_mkstemps_fd(const std::string& prefix, const std::string& suffix, std
       if (fd != -1) return fd;
       if (fd == -1 && errno != EEXIST) return -1;
     }
+    return 0;
   }
 std::string simple_mkstemps(const std::string& prefix, const std::string& suffix) {
   std::string ret;

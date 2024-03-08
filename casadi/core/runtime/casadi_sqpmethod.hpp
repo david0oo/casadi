@@ -1,4 +1,22 @@
-// NOLINT(legal/copyright)
+//
+//    MIT No Attribution
+//
+//    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl, KU Leuven.
+//
+//    Permission is hereby granted, free of charge, to any person obtaining a copy of this
+//    software and associated documentation files (the "Software"), to deal in the Software
+//    without restriction, including without limitation the rights to use, copy, modify,
+//    merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+//    permit persons to whom the Software is furnished to do so.
+//
+//    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+//    INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+//    PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+//    HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+//    OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+//    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
 
 // C-REPLACE "casadi_nlpsol_prob<T1>" "struct casadi_nlpsol_prob"
 
@@ -39,6 +57,11 @@ struct casadi_sqpmethod_data {
   T1* temp_mem;
   // temp_sol
   T1* temp_sol;
+
+  const T1** arg;
+  T1** res;
+  casadi_int* iw;
+  T1* w;
 };
 // C-REPLACE "casadi_sqpmethod_data<T1>" "struct casadi_sqpmethod_data"
 
@@ -95,7 +118,8 @@ void casadi_sqpmethod_work(const casadi_sqpmethod_prob<T1>* p,
 
 // SYMBOL "sqpmethod_init"
 template<typename T1>
-void casadi_sqpmethod_init(casadi_sqpmethod_data<T1>* d, casadi_int** iw, T1** w,
+void casadi_sqpmethod_init(casadi_sqpmethod_data<T1>* d,
+    const T1*** arg, T1*** res, casadi_int** iw, T1** w,
     int elastic_mode, int so_corr) {
   // Local variables
   casadi_int nnz_h, nnz_a, nx, ng;
@@ -147,4 +171,8 @@ void casadi_sqpmethod_init(casadi_sqpmethod_data<T1>* d, casadi_int** iw, T1** w
     // Jacobian
     d->Jk = *w; *w += nnz_a;
   }
+  d->arg = *arg;
+  d->res = *res;
+  d->iw = *iw;
+  d->w = *w;
 }

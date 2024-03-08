@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -37,6 +37,22 @@
 #include <vector>
 
 #include <casadi/core/casadi_export.h>
+
+// Disable some Visual studio warnings
+#ifdef _MSC_VER
+
+// warning C4251: Need a dll interface?
+#pragma warning(disable:4251)
+
+// warning C4275: non dll-interface class 'std::exception' used as base for dll-interface
+// class 'casadi::CasadiException'
+#pragma warning(disable:4275)
+
+// warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s
+// instead
+#pragma warning(disable:4996)
+
+#endif // _MSC_VER
 
 namespace casadi {
 
@@ -101,11 +117,19 @@ inline std::string trim_path(const std::string& full_path) {
 
 // Current time as a string
 inline std::ostream& message_prefix(std::ostream &stream) {
+  // CasADi prefix
   stream << "CasADi - ";
-  auto time = std::time(nullptr);
-  char stamp[30];
-  strftime(stamp, 30, "%F %T", std::localtime(&time)); // NOLINT(runtime/threadsafe_fn)
-  stream << stamp;
+  // Get current time
+  auto now = std::chrono::system_clock::now();
+  std::time_t tt = std::chrono::system_clock::to_time_t(now);
+  auto local_tm = *std::localtime(&tt);  // NOLINT(runtime/threadsafe_fn)
+  // Convert to YYYY-MM-DD HH:MM:SS format
+  stream << local_tm.tm_year + 1900 << '-';  // YYYY-
+  stream << std::setfill('0') << std::setw(2) << local_tm.tm_mon + 1 << '-';  // MM-
+  stream << std::setfill('0') << std::setw(2) << local_tm.tm_mday << ' ';  // DD
+  stream << std::setfill('0') << std::setw(2) << local_tm.tm_hour << ':';  // hh:
+  stream << std::setfill('0') << std::setw(2) << local_tm.tm_min << ':';  // mm:
+  stream << std::setfill('0') << std::setw(2) << local_tm.tm_sec;  // ss
   return stream;
 }
 

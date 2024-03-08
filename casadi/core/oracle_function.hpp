@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -53,6 +53,7 @@ namespace casadi {
     double* w;
 
     std::vector<LocalOracleMemory*> thread_local_mem;
+    ~OracleMemory();
   };
 
   /** \brief Base class for functions that perform calculation with an oracle
@@ -129,12 +130,32 @@ namespace casadi {
     // Replace MX oracle with SX oracle?
     void expand();
 
+    /** Create an oracle function, using a different oracle function
+     * Temporary addition to allow transition from one oracle formulation to another.
+     */
+    Function create_function(const Function& oracle, const std::string& fname,
+      const std::vector<std::string>& s_in,
+      const std::vector<std::string>& s_out,
+      const Function::AuxOut& aux=Function::AuxOut(),
+      const Dict& opts=Dict());
+
     /** Create an oracle function */
-    Function
-    create_function(const std::string& fname,
-                    const std::vector<std::string>& s_in,
-                    const std::vector<std::string>& s_out,
-                    const Function::AuxOut& aux=Function::AuxOut());
+    Function create_function(const std::string& fname,
+      const std::vector<std::string>& s_in,
+      const std::vector<std::string>& s_out,
+      const Function::AuxOut& aux=Function::AuxOut(),
+      const Dict& opts=Dict());
+
+    /** Create an oracle function from MX */
+    Function create_function(const std::string& fname,
+      const std::vector<MX>& e_in,
+      const std::vector<MX>& e_out,
+      const std::vector<std::string>& s_in,
+      const std::vector<std::string>& s_out,
+      const Dict& opts=Dict());
+
+    /** Create an oracle function as a forward derivative of a different function */
+    Function create_forward(const std::string& fname, casadi_int nfwd);
 
     /** Register the function for evaluation and statistics gathering */
     void set_function(const Function& fcn, const std::string& fname, bool jit=false);
@@ -144,7 +165,15 @@ namespace casadi {
 
     // Calculate an oracle function
     int calc_function(OracleMemory* m, const std::string& fcn,
-                      const double* const* arg=nullptr, int thread_id=0) const;
+      const double* const* arg=nullptr, int thread_id=0) const;
+
+    // Forward sparsity propagation through a function
+    int calc_sp_forward(const std::string& fcn, const bvec_t** arg, bvec_t** res,
+      casadi_int* iw, bvec_t* w) const;
+
+    // Reverse sparsity propagation through a function
+    int calc_sp_reverse(const std::string& fcn, bvec_t** arg, bvec_t** res,
+      casadi_int* iw, bvec_t* w) const;
 
     /** \brief Get list of dependency functions
 
@@ -187,15 +216,10 @@ namespace casadi {
         \identifier{n} */
     int init_mem(void* mem) const override;
 
-    /** \brief Free memory block
-
-        \identifier{o} */
-    void local_free_mem(void *mem) const { delete static_cast<LocalOracleMemory*>(mem);}
-
    /** \brief Free memory block
 
        \identifier{p} */
-    void free_mem(void *mem) const override;
+    void free_mem(void *mem) const override { delete static_cast<OracleMemory*>(mem);}
 
     /** \brief Set the work vectors
 

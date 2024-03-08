@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -212,10 +212,20 @@ namespace casadi {
     // Solve the NLP
     virtual int solve(void* mem) const = 0;
 
+    /** \brief Generate code for the declarations of the C function
+
+        \identifier{27j} */
+    void codegen_declarations(CodeGenerator& g) const override;
+
     /** \brief Generate code for the function body
 
         \identifier{1o0} */
-    void nlpsol_codegen_body(CodeGenerator& g) const;
+    void codegen_body_enter(CodeGenerator& g) const;
+
+    /** \brief Generate code for the function body
+
+        \identifier{27k} */
+    void codegen_body_exit(CodeGenerator& g) const;
 
     /** \brief Do the derivative functions need nondifferentiated outputs?
 

@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -38,6 +38,8 @@
 #include <chrono>
 
 #include <IpIpoptApplication.hpp>
+
+#include <ipopt_runtime_str.h>
 
 namespace casadi {
   extern "C"
@@ -409,8 +411,10 @@ namespace casadi {
       return "Maximum_CpuTime_Exceeded";
     case Feasible_Point_Found:
       return "Feasible_Point_Found";
+#if (IPOPT_VERSION_MAJOR > 3) || (IPOPT_VERSION_MAJOR == 3 && IPOPT_VERSION_MINOR >= 14)
     case Maximum_WallTime_Exceeded:
       return "Maximum_WallTime_Exceeded";
+#endif
     }
     return "Unknown";
   }
@@ -445,8 +449,11 @@ namespace casadi {
     m->success = status==Solve_Succeeded || status==Solved_To_Acceptable_Level
                  || status==Feasible_Point_Found;
     if (status==Maximum_Iterations_Exceeded ||
-        status==Maximum_WallTime_Exceeded ||
         status==Maximum_CpuTime_Exceeded) m->unified_return_status = SOLVER_RET_LIMITED;
+
+#if (IPOPT_VERSION_MAJOR > 3) || (IPOPT_VERSION_MAJOR == 3 && IPOPT_VERSION_MINOR >= 14)
+    if (status==Maximum_WallTime_Exceeded) m->unified_return_status = SOLVER_RET_LIMITED;
+#endif
 
     // Save results to outputs
     casadi_copy(m->gk, ng_, d_nlp->z + nx_);
@@ -544,7 +551,7 @@ namespace casadi {
     } catch(KeyboardInterruptException& ex) {
       return 0;
     } catch(std::exception& ex) {
-      uerr() << "intermediate_callback: " << ex.what() << std::endl;
+      casadi_warning("intermediate_callback: " + std::string(ex.what()));
       if (iteration_callback_ignore_errors_) return 1;
       return 0;
     }
@@ -785,5 +792,255 @@ namespace casadi {
     s.pack("IpoptInterface::inactive_lam_value", inactive_lam_value_);
 
   }
+
+  void IpoptInterface::codegen_init_mem(CodeGenerator& g) const {
+    g << "ipopt_init_mem(&" + codegen_mem(g) + ");\n";
+    g << "return 0;\n";
+  }
+
+  void IpoptInterface::codegen_free_mem(CodeGenerator& g) const {
+    g << "ipopt_free_mem(&" + codegen_mem(g) + ");\n";
+  }
+
+void IpoptInterface::codegen_declarations(CodeGenerator& g) const {
+  Nlpsol::codegen_declarations(g);
+  g.add_auxiliary(CodeGenerator::AUX_NLP);
+  g.add_auxiliary(CodeGenerator::AUX_COPY);
+  g.add_auxiliary(CodeGenerator::AUX_FMAX);
+  g.add_dependency(get_function("nlp_f"));
+  g.add_dependency(get_function("nlp_grad_f"));
+  g.add_dependency(get_function("nlp_g"));
+  g.add_dependency(get_function("nlp_jac_g"));
+  if (exact_hessian_) {
+    g.add_dependency(get_function("nlp_hess_l"));
+  }
+  g.add_include("coin-or/IpStdCInterface.h");
+
+  std::string name = "nlp_f";
+  std::string f = g.shorthand(g.wrapper(get_function(name), name));
+
+  g << "bool " << f
+    << "(ipindex n, ipnumber *x, bool new_x, ipnumber *obj_value, UserDataPtr user_data) {\n";
+  g.flush(g.body);
+  g.scope_enter();
+  g << "struct casadi_ipopt_data* d = (struct casadi_ipopt_data*) user_data;\n";
+  g << "d->arg[0] = x;\n";
+  g << "d->arg[1] = d->nlp->p;\n";
+  g << "d->res[0] = obj_value;\n";
+  std::string flag = g(get_function(name), "d->arg", "d->res", "d->iw", "d->w", "false");
+  g << "if (" + flag + ") return false;\n";
+  g << "return true;\n";
+  g.scope_exit();
+  g << "}\n";
+
+  name = "nlp_g";
+  f = g.shorthand(g.wrapper(get_function(name), name));
+  g << "bool " << f
+    << "(ipindex n, ipnumber *x, bool new_x, ipindex m, ipnumber *g, UserDataPtr user_data) {\n";
+  g.flush(g.body);
+  g.scope_enter();
+  g << "struct casadi_ipopt_data* d = (struct casadi_ipopt_data*) user_data;\n";
+  g << "d->arg[0] = x;\n";
+  g << "d->arg[1] = d->nlp->p;\n";
+  g << "d->res[0] = g;\n";
+  flag = g(get_function(name), "d->arg", "d->res", "d->iw", "d->w", "false");
+  g << "if (" + flag + ") return false;\n";
+  g << "return true;\n";
+  g.scope_exit();
+  g << "}\n";
+
+  name = "nlp_grad_f";
+  f = g.shorthand(g.wrapper(get_function(name), name));
+  g << "bool " << f
+    << "(ipindex n, ipnumber *x, bool new_x, ipnumber *grad_f, UserDataPtr user_data) {\n";
+  g.flush(g.body);
+  g.scope_enter();
+  g << "struct casadi_ipopt_data* d = (struct casadi_ipopt_data*) user_data;\n";
+  g << "d->arg[0] = x;\n";
+  g << "d->arg[1] = d->nlp->p;\n";
+  g << "d->res[0] = 0;\n";
+  g << "d->res[1] = grad_f;\n";
+  flag = g(get_function(name), "d->arg", "d->res", "d->iw", "d->w", "false");
+  g << "if (" + flag + ") return false;\n";
+  g << "return true;\n";
+  g.scope_exit();
+  g << "}\n";
+
+  name = "nlp_jac_g";
+  f = g.shorthand(g.wrapper(get_function(name), name));
+  g << "bool " << f
+    << "(ipindex n, ipnumber *x, bool new_x, ipindex m,"
+    << " ipindex nele_jac, ipindex *iRow, ipindex *jCol, "
+    << "ipnumber *values, UserDataPtr user_data) {\n";
+  g.flush(g.body);
+  g.scope_enter();
+  g << "struct casadi_ipopt_data* d = (struct casadi_ipopt_data*) user_data;\n";
+  g << "if (values) {\n";
+  g << "d->arg[0] = x;\n";
+  g << "d->arg[1] = d->nlp->p;\n";
+  g << "d->res[0] = 0;\n";
+  g << "d->res[1] = values;\n";
+  flag = g(get_function(name), "d->arg", "d->res", "d->iw", "d->w", "false");
+  g << "if (" + flag + ") return false;\n";
+  g << "} else {\n";
+  g << "casadi_ipopt_sparsity(d->prob->sp_a, iRow, jCol);\n";
+  g << "}\n";
+  g << "return true;\n";
+  g.scope_exit();
+  g << "}\n";
+
+  if (exact_hessian_) {
+    name = "nlp_hess_l";
+    f = g.shorthand(g.wrapper(get_function(name), name));
+    g << "bool " << f << "(ipindex n, ipnumber *x, bool new_x, ipnumber obj_factor,"
+      << "ipindex m, ipnumber *lambda, bool new_lambda, ipindex nele_hess, "
+      << "ipindex *iRow, ipindex *jCol, ipnumber *values, UserDataPtr user_data) {\n";
+    g.flush(g.body);
+    g.scope_enter();
+    g << "struct casadi_ipopt_data* d = (struct casadi_ipopt_data*) user_data;\n";
+    g << "if (values) {\n";
+    g << "d->arg[0] = x;\n";
+    g << "d->arg[1] = d->nlp->p;\n";
+    g << "d->arg[2] = &obj_factor;\n";
+    g << "d->arg[3] = lambda;\n";
+    g << "d->res[0] = values;\n";
+    flag = g(get_function(name), "d->arg", "d->res", "d->iw", "d->w", "false");
+    g << "if (" + flag + ") return false;\n";
+    g << "return true;\n";
+    g << "} else {\n";
+    g << "casadi_ipopt_sparsity(d->prob->sp_h, iRow, jCol);\n";
+    g << "}\n";
+    g << "return true;\n";
+    g.scope_exit();
+    g << "}\n";
+  }
+}
+
+void IpoptInterface::codegen_body(CodeGenerator& g) const {
+  codegen_body_enter(g);
+  g.auxiliaries << g.sanitize_source(ipopt_runtime_str, {"casadi_real"});
+
+  g.local("d", "struct casadi_ipopt_data*");
+  g.init_local("d", "&" + codegen_mem(g));
+  g.local("p", "struct casadi_ipopt_prob");
+  set_ipopt_prob(g);
+
+  g << "casadi_ipopt_init(d, &arg, &res, &iw, &w);\n";
+  g << "casadi_ipopt_presolve(d);\n";
+
+  // Start an IPOPT application
+  Ipopt::SmartPtr<Ipopt::IpoptApplication> *app = new Ipopt::SmartPtr<Ipopt::IpoptApplication>();
+  *app = new Ipopt::IpoptApplication(false);
+
+  // Get all options available in (s)IPOPT
+  auto regops = (*app)->RegOptions()->RegisteredOptionsList();
+
+  Dict options = Options::sanitize(opts_);
+  // Replace resto group with prefixes
+  auto it = options.find("resto");
+  if (it!=options.end()) {
+    Dict resto_options = it->second;
+    options.erase(it);
+    for (auto&& op : resto_options) {
+      options["resto." + op.first] = op.second;
+    }
+  }
+
+  // Pass all the options to ipopt
+  for (auto&& op : options) {
+
+    // There might be options with a resto prefix.
+    std::string option_name = op.first;
+    if (startswith(option_name, "resto.")) {
+      option_name = option_name.substr(6);
+    }
+
+    // Find the option
+    auto regops_it = regops.find(option_name);
+    if (regops_it==regops.end()) {
+      casadi_error("No such IPOPT option: " + op.first);
+    }
+
+    // Get the type
+    Ipopt::RegisteredOptionType ipopt_type = regops_it->second->Type();
+
+    // Pass to IPOPT
+    switch (ipopt_type) {
+    case Ipopt::OT_Number:
+      g << "AddIpoptNumOption(d->ipopt, \"" << op.first << "\""
+        << "," << op.second.to_double() << ");\n";
+      break;
+    case Ipopt::OT_Integer:
+      g << "AddIpoptIntOption(d->ipopt, \"" << op.first << "\""
+        << "," << op.second.to_int() << ");\n";
+      break;
+    case Ipopt::OT_String:
+      g << "AddIpoptStrOption(d->ipopt, \"" << op.first << "\""
+        << ",\"" << op.second.to_string() << "\");\n";
+      break;
+    case Ipopt::OT_Unknown:
+    default:
+      casadi_warning("Cannot handle option \"" + op.first + "\", ignored");
+      continue;
+    }
+  }
+
+  // Override IPOPT's default linear solver
+  if (opts_.find("linear_solver") == opts_.end()) {
+    char * default_solver = getenv("IPOPT_DEFAULT_LINEAR_SOLVER");
+    if (default_solver) {
+      g << "AddIpoptStrOption(d->ipopt, \"linear_solver\"" << ",\"" << default_solver << "\");\n";
+    } else {
+      // Fall back to MUMPS (avoid user issues after SPRAL was added to binaries and
+      // chosen default by Ipopt)
+      g << "AddIpoptStrOption(d->ipopt, \"linear_solver\",\"mumps\");\n";
+    }
+
+  }
+
+  delete app;
+
+  // Options
+  g << "casadi_ipopt_solve(d);\n";
+
+  codegen_body_exit(g);
+
+  if (error_on_fail_) {
+    g << "return d->unified_return_status;\n";
+  } else {
+    g << "return 0;\n";
+  }
+}
+
+void IpoptInterface::set_ipopt_prob(CodeGenerator& g) const {
+  if (jacg_sp_.size1()>0 && jacg_sp_.nnz()==0) {
+    casadi_error("Empty sparsity pattern not supported in IPOPT C interface");
+  }
+  g << "d->nlp = &d_nlp;\n";
+  g << "d->prob = &p;\n";
+  g << "p.nlp = &p_nlp;\n";
+  g << "p.sp_a = " << g.sparsity(jacg_sp_) << ";\n";
+  if (exact_hessian_) {
+    g << "p.sp_h = " << g.sparsity(hesslag_sp_) << ";\n";
+  } else {
+    g << "p.sp_h = 0;\n";
+  }
+  g << "casadi_ipopt_setup(&p);\n";
+
+  std::string nlp_f = g.shorthand(g.wrapper(get_function("nlp_f"), "nlp_f"));
+  g << "p.eval_f = " << nlp_f << ";\n";
+  std::string nlp_g = g.shorthand(g.wrapper(get_function("nlp_g"), "nlp_g"));
+  g << "p.eval_g = " << nlp_g << ";\n";
+  std::string nlp_grad_f = g.shorthand(g.wrapper(get_function("nlp_grad_f"), "nlp_grad_f"));
+  g << "p.eval_grad_f = " << nlp_grad_f << ";\n";
+  std::string nlp_jac_g = g.shorthand(g.wrapper(get_function("nlp_jac_g"), "nlp_jac_g"));
+  g << "p.eval_jac_g = " << nlp_jac_g << ";\n";
+  if (exact_hessian_) {
+    std::string nlp_hess_l = g.shorthand(g.wrapper(get_function("nlp_hess_l"), "nlp_hess_l"));
+    g << "p.eval_h = " << nlp_hess_l << ";\n";
+  } else {
+    g << "p.eval_h = casadi_ipopt_hess_l_empty;\n";
+  }
+}
 
 } // namespace casadi

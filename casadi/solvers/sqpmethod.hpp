@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl, Kobe Bergmans
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl, Kobe Bergmans
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -44,6 +44,9 @@ namespace casadi {
   struct CASADI_NLPSOL_SQPMETHOD_EXPORT SqpmethodMemory : public NlpsolMemory {
     // Problem data structure
     casadi_sqpmethod_data<double> d;
+
+    // Memory object of qp solver
+    int mem_qp;
     /// Hessian regularization
     double reg;
 
@@ -97,7 +100,7 @@ namespace casadi {
     int init_mem(void* mem) const override;
 
     /** \brief Free memory block */
-    void free_mem(void *mem) const override { delete static_cast<SqpmethodMemory*>(mem);}
+    void free_mem(void* mem) const override;
 
     /** \brief Set the (persistent) work vectors */
     void set_work(void* mem, const double**& arg, double**& res,
@@ -173,6 +176,9 @@ namespace casadi {
 
     /** \brief Generate code for the declarations of the C function */
     void codegen_declarations(CodeGenerator& g) const override;
+
+    /** \brief Thread-local memory object type */
+    std::string codegen_mem_type() const override { return "struct casadi_sqpmethod_data"; }
 
     /// Access Conic
     const Function getConic() const { return qpsol_;}

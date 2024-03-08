@@ -2,8 +2,8 @@
  *    This file is part of CasADi.
  *
  *    CasADi -- A symbolic framework for dynamic optimization.
- *    Copyright (C) 2010-2014 Joel Andersson, Joris Gillis, Moritz Diehl,
- *                            K.U. Leuven. All rights reserved.
+ *    Copyright (C) 2010-2023 Joel Andersson, Joris Gillis, Moritz Diehl,
+ *                            KU Leuven. All rights reserved.
  *    Copyright (C) 2011-2014 Greg Horn
  *
  *    CasADi is free software; you can redistribute it and/or
@@ -103,12 +103,19 @@ namespace casadi {
         \identifier{ry} */
     casadi_int get_constant(const std::vector<casadi_int>& v, bool allow_adding=false);
 
+    /** \brief Get or add a char constant
+
+        \identifier{27l} */
+    casadi_int get_constant(const std::vector<char>& v, bool allow_adding=false);
+
     /** \brief Represent an array constant; adding it when new
 
         \identifier{rz} */
     std::string constant(const std::vector<casadi_int>& v);
 
-    /** \brief Represent an array constant; adding it when new */
+    /** \brief Represent an array constant; adding it when new
+
+        \identifier{255} */
     std::string constant(const std::vector<int>& v) {
         return constant(vector_static_cast<casadi_int>(v));
     }
@@ -125,6 +132,11 @@ namespace casadi {
 
         \identifier{s1} */
     std::string constant(const std::vector<double>& v);
+
+    /** \brief Represent an array constant; adding it when new
+
+        \identifier{27m} */
+    std::string constant(const std::vector<char>& v);
 
     /** \brief Allocate file scope double read-only memory
 
@@ -151,7 +163,7 @@ namespace casadi {
         \identifier{s6} */
     std::string operator()(const Function& f, const std::string& arg,
                            const std::string& res, const std::string& iw,
-                           const std::string& w);
+                           const std::string& w, const std::string& failure_ret="1");
 
     /** \brief Print a string to buffer
 
@@ -230,6 +242,7 @@ namespace casadi {
         \identifier{sk} */
     std::string initializer(const std::vector<double>& v);
     std::string initializer(const std::vector<casadi_int>& v);
+    std::string initializer(const std::vector<char>& v);
 
     /** \brief Sanitize source files for codegen
 
@@ -460,8 +473,10 @@ namespace casadi {
     std::string norm_inf(casadi_int n, const std::string& x);
 
     /** 
+
      * \brief norm_2
-    */
+
+                \identifier{256} */
     std::string norm_2(casadi_int n, const std::string& x);
 
     /** \brief max_viol
@@ -630,6 +645,12 @@ namespace casadi {
     void print_vector(std::ostream &s, const std::string& name,
                              const std::vector<casadi_int>& v);
 
+    /** \brief  Print char vector to a c file
+
+        \identifier{27n} */
+    void print_vector(std::ostream &s, const std::string& name,
+                             const std::vector<char>& v);
+
     /** \brief  Print real vector to a c file
 
         \identifier{ts} */
@@ -707,6 +728,11 @@ namespace casadi {
                          const std::string& res, std::size_t res_off, const Sparsity& sp_res,
                          const std::string& w);
 
+    /** \brief FMU helper functions
+
+        \identifier{257} */
+    static std::string fmu_helpers(const std::string& modelname);
+
     /** \brief Printf
 
         \identifier{u5} */
@@ -734,13 +760,22 @@ namespace casadi {
     std::string cache_check(const std::string& key, const std::string& cache,
         const std::string& loc, casadi_int stride, casadi_int sz, casadi_int key_sz,
         const std::string& val);
+
+    /// Current CasADi version as string
+    static std::string casadi_version();
+
+    /// Print file header
+    static void file_open(std::ofstream& f, const std::string& name, bool cpp);
+
+    /// Print file header
+    static void file_close(std::ofstream& f, bool cpp);
+
+    /** \brief Get number of temporary variables needed for all functions
+
+        \identifier{258} */
+    void sz_work(size_t& sz_arg, size_t& sz_res, size_t& sz_iw, size_t& sz_w) const;
+
   private:
-
-    /// Print file header
-    void file_open(std::ofstream& f, const std::string& name) const;
-
-    /// Print file header
-    void file_close(std::ofstream& f) const;
 
     // Generate casadi_real definition
     void generate_casadi_real(std::ostream &s) const;
@@ -750,6 +785,12 @@ namespace casadi {
 
     // Generate mex entry point
     void generate_mex(std::ostream &s) const;
+
+    // Generate function specific code for Simulink s-Function
+    std::string codegen_sfunction(const Function& f) const;
+
+    // Export s-Function to file
+    void generate_sfunction(const std::string& name, const std::string& sfunction) const;
 
     // Generate main entry point
     void generate_main(std::ostream &s) const;
@@ -781,6 +822,13 @@ namespace casadi {
 
     // Are we creating a MEX file?
     bool mex;
+
+    // Are we creating a s-function?
+    bool with_sfunction;
+    std::vector<std::string> added_sfunctions;
+
+    // Unroll arguments?
+    bool unroll_args;
 
     // Verbose codegen?
     bool verbose;
@@ -846,6 +894,7 @@ namespace casadi {
     std::multimap<Auxiliary, std::vector<std::string>> added_auxiliaries_;
     std::multimap<size_t, size_t> added_double_constants_;
     std::multimap<size_t, size_t> added_integer_constants_;
+    std::multimap<size_t, size_t> added_char_constants_;
     std::map<std::string, std::pair<std::string, std::string> > local_variables_;
     std::map<std::string, std::string> local_default_;
     std::map<const void *, casadi_int> file_scope_double_;
@@ -860,9 +909,13 @@ namespace casadi {
     };
     std::vector<FunctionMeta> added_functions_;
 
+    // Counters for creating unique identifiers
+    std::map<std::string, std::map<FunctionInternal*, casadi_int> > added_wrappers_;
+
     // Constants
     std::vector<std::vector<double> > double_constants_;
     std::vector<std::vector<casadi_int> > integer_constants_;
+    std::vector<std::vector<char> > char_constants_;
 
     // Does any function need thread-local memory?
     bool needs_mem_;
@@ -870,6 +923,9 @@ namespace casadi {
     // Hash a vector
     static size_t hash(const std::vector<double>& v);
     static size_t hash(const std::vector<casadi_int>& v);
+    static size_t hash(const std::vector<char>& v);
+
+    std::string wrapper(const Function& base, const std::string& name);
 
     // Compare two vectors
     template<typename T>
