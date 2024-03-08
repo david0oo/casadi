@@ -270,7 +270,8 @@ void Sqpmethod::init(const Dict& opts) {
   convexify_ = false;
 
   // Get/generate required functions
-  if (max_iter_ls_ || so_corr_) create_function("nlp_fg", {"x", "p"}, {"f", "g"});
+  // if (max_iter_ls_ || so_corr_) create_function("nlp_fg", {"x", "p"}, {"f", "g"});
+  create_function("nlp_g", {"x", "p"}, {"g"});
   // First order derivative information
 
   if (!has_function("nlp_jac_fg")) {
@@ -310,11 +311,11 @@ void Sqpmethod::init(const Dict& opts) {
   // ----------------------------------------
   // Generate sparsity pattern, we create a diagonal sparsity structure
   // Sparsity Hsp_phaseI = Sparsity(Hsp_);
-  Sparsity Hsp_phaseI = Sparsity::diag(nx_, nx_);
+  Hsp_phaseI_ = Sparsity::diag(nx_, nx_);
   Sparsity Asp_phaseI = Sparsity(Asp_);
 
   std::vector<casadi_int> n_v = range(nx_);
-  Hsp_phaseI.enlarge(2*ng_ + nx_, 2*ng_ + nx_, n_v, n_v);
+  Hsp_phaseI_.enlarge(2*ng_ + nx_, 2*ng_ + nx_, n_v, n_v);
 
   // enlarge Asp_
   Sparsity dsp = Sparsity::diag(ng_, ng_);
@@ -327,7 +328,7 @@ void Sqpmethod::init(const Dict& opts) {
   casadi_assert(!qpsol_plugin.empty(), "'qpsol' option has not been set");
   qp_solver_phaseI_ = conic("qp_solver_phaseI",
                             qpsol_plugin,
-                            {{"h", Hsp_phaseI}, {"a", Asp_phaseI}},
+                            {{"h", Hsp_phaseI_}, {"a", Asp_phaseI}},
                             qp_solver_phaseI_options);
   alloc(qp_solver_phaseI_);
   //-------------------------------------------
@@ -383,6 +384,15 @@ int Sqpmethod::init_mem(void* mem) const {
 // ############################################################################
 // Function Evaluation functions
 // ############################################################################
+void Sqpmethod::evaluate_g(SqpmethodMemory* m, double* input_z, const double* parameter, double* output) const{
+  // Evaluate f
+  m->arg[0] = input_z;
+  m->arg[1] = parameter;
+  m->res[0] = output;
+  if (calc_function(m, "nlp_g")) {
+          uout() << "What does it mean that calc_function fails here??" << std::endl;
+  }
+}
 
 int Sqpmethod::evaluate_jac_fg(SqpmethodMemory* m, double* input_z, const double* parameter, double& output_f, double* output_gradient, double* output_g, double* output_jacobian) const {
   m->arg[0] = input_z;
@@ -480,7 +490,7 @@ int Sqpmethod::solve(void* mem) const {
   casadi_copy(d_nlp->z, nx_, d->x_reference);
 
   // Set diagonal matrix in phase I
-  double factor = 100.0;
+  double factor = 10.0;
   for (int i=0; i<nx_; ++i){
     if (d->x_reference[i] != 0.0){
       d->Bk_phaseI[i] = factor*fmin(1.0, 1.0/fabs(d->x_reference[i]))*fmin(1.0, 1.0/fabs(d->x_reference[i]));
@@ -491,7 +501,8 @@ int Sqpmethod::solve(void* mem) const {
 
   // MAIN OPTIMIZATION LOOP
   while (true) {
-
+    
+    std::cout << "Current x: " << std::vector<double>(d_nlp->z,d_nlp->z+nx_) << std::endl;
     // Evaluate f, g and first order derivative information
     ret = evaluate_jac_fg(m, d_nlp->z, d_nlp->p, d_nlp->objective, d->gf, d_nlp->z + nx_, d->Jk);
     if (ret != 0) {
@@ -564,7 +575,7 @@ int Sqpmethod::solve(void* mem) const {
     //   break;
     // }
     // ------------------------------------------
-    if (m->primal_infeasibility >= m->funnel_size){
+    if (m->primal_infeasibility > m->funnel_size){
       // ---------
       // PHASE I
       // ---------
@@ -862,9 +873,10 @@ int Sqpmethod::solve(void* mem) const {
 // ############################################################################
 // Phase I Algorithm
 // ############################################################################
-void Sqpmethod::do_phaseI(SqpmethodMemory* m) const {
+void Sqpmethod::prepare_data_for_phaseI_QP(SqpmethodMemory* m) const {
   auto d_nlp = &m->d_nlp;
   auto d = &m->d;
+
   // Prepare the QP for the phase I problem
   // Initial guess
   casadi_clear(d->dx_phaseI, nx_+2*ng_);
@@ -921,6 +933,78 @@ void Sqpmethod::do_phaseI(SqpmethodMemory* m) const {
       d->dx_phaseI[nx_+ng_+i] = fmax(d->lbdz_phaseI[nx_+2*ng_+i]-temp_mem[i], 0);
     }
   }
+}
+
+int Sqpmethod::phaseI_line_search(SqpmethodMemory* m) const {
+  auto d_nlp = &m->d_nlp;
+  auto d = &m->d;
+  // Calculate the
+  double Phi_x = casadi_sum_viol(nx_+ng_, d_nlp->z, d_nlp->lbz, d_nlp->ubz); 
+  casadi_copy(d_nlp->z, nx_, d->z_candidate);
+  casadi_axpy(nx_, -1.0, d->x_reference, d->z_candidate);
+  Phi_x += 0.5*casadi_bilin(d->Bk_phaseI, Sparsity::diag(nx_,nx_),d->z_candidate, d->z_candidate);
+
+  double model_Phi_0 = Phi_x; // for d=0
+  // double model_Phi_d = d->d_QP_cost; // seems fishy to me!
+  // Prepare the l1-norm for the step
+  casadi_copy(d->dx_phaseI, nx_, d->z_candidate);
+  casadi_mv(d->Jk, Asp_, d->dx_phaseI, d->z_candidate+nx_, false);
+  casadi_axpy(nx_, 1.0, d_nlp->z+nx_, d->z_candidate+nx_);
+
+  double model_Phi_d = 0.5*casadi_bilin(d->Bk_phaseI, Sparsity::diag(nx_,nx_),d->dx_phaseI, d->dx_phaseI)
+                      + casadi_dot(nx_, d->gf_phaseI, d->dx_phaseI)
+                      + casadi_sum_viol(nx_, d->z_candidate, d->lbdz, d->ubdz)
+                      + casadi_sum_viol(ng_, d->z_candidate+nx_, d->lbdz+nx_+2*ng_, d->ubdz+nx_+2*ng_);
+
+  double Phi_x_trial;
+
+  std::cout << "Phi of current x: " << Phi_x << std::endl;
+  std::cout << "model Phi 0: " << model_Phi_0 << std::endl;
+  std::cout << "model Phi d: " << model_Phi_d << std::endl;
+  double step_size = 1.0;
+  while (true){
+
+    // Prepare trial iterate
+    casadi_copy(d_nlp->z, nx_, d->z_candidate);
+    casadi_axpy(nx_, step_size, d->dx_phaseI, d->z_candidate);
+    evaluate_g(m, d->z_candidate, d_nlp->p, d->z_candidate + nx_);
+
+    // Prepare objective of current point
+    Phi_x_trial = casadi_sum_viol(nx_+ng_, d->z_candidate,d_nlp->lbz, d_nlp->ubz);
+    std::cout << "Phi trial of current x: " << Phi_x_trial << std::endl;
+    casadi_axpy(nx_, -1.0, d->x_reference, d->z_candidate);
+    Phi_x_trial += 0.5*casadi_bilin(d->Bk_phaseI, Sparsity::diag(nx_,nx_),d->z_candidate, d->z_candidate);
+
+    // Sufficient decrease condition
+    double eta = 1e-8;
+    double ratio = (Phi_x - Phi_x_trial) / (model_Phi_0 - model_Phi_d);
+    std::cout << "Ratio: " << ratio << std::endl;
+    if (Phi_x - Phi_x_trial >= eta*step_size*fmax(0, model_Phi_0 - model_Phi_d - 1e-9)) {
+      
+      std::cout << "ACCEPT the step with step_size: " << step_size << std::endl;
+
+      // Step update
+      casadi_axpy(nx_, step_size, d->dx_phaseI, d_nlp->z);
+
+      return 0;
+    }
+    // Reset of step_size
+    double step_size_min = 1e-7;
+    step_size = 0.5*step_size;
+    if (step_size < step_size_min){
+      std::cout << "FAIL" << step_size << std::endl;
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+void Sqpmethod::do_phaseI(SqpmethodMemory* m) const {
+  auto d_nlp = &m->d_nlp;
+  auto d = &m->d;
+  
+  prepare_data_for_phaseI_QP(m);
 
   std::cout << "x_ref: " << std::vector<double>(d->x_reference,d->x_reference+nx_) << std::endl;
   std::cout << "Hessian: " << std::vector<double>(d->Bk_phaseI,d->Bk_phaseI+nx_) << std::endl;
@@ -932,18 +1016,23 @@ void Sqpmethod::do_phaseI(SqpmethodMemory* m) const {
   // Solve the QP
   int ret = solve_phaseI_QP(m, d->Bk_phaseI, d->gf_phaseI, d->lbdz_phaseI, 
                             d->ubdz_phaseI, d->Jk_phaseI, d->dx_phaseI,
-                            d->dlam_phaseI);
+                            d->dlam_phaseI, d->d_QP_cost);
   std::cout << "d_x: " << std::vector<double>(d->dx_phaseI,d->dx_phaseI+nx_+2*ng_) << std::endl;
   if (ret == 0){
     uout() << "Successful phase I QP!" << std::endl;
   } else {
     throw std::runtime_error("Phase I QP was not solved succesfully!");
   }
-  // uout() << "Norm_inf of dx_phaseI: " << casadi_norm_inf(nx_, d->dx_phaseI) << std::endl;
-
   if (casadi_norm_inf(nx_, d->dx_phaseI) <= 1e-12){
     throw std::runtime_error("Restoration phase search direction is 0.");
   }
+
+  // Do line search for phase I
+  ret = phaseI_line_search(m);
+
+
+  // Do step update here, if line search was successful
+
 }
 
 // ############################################################################
@@ -1087,7 +1176,7 @@ int Sqpmethod::solve_QP(SqpmethodMemory* m, const double* H, const double* g,
 
 int Sqpmethod::solve_phaseI_QP(SqpmethodMemory* m, const double* H, const double* g,
                           const double* lbdz, const double* ubdz, const double* A,
-                          double* x_opt, double* dlam) const {
+                          double* x_opt, double* dlam, double cost) const {
   ScopedTiming tic(m->fstats.at("QP"));
   // Inputs
   std::fill_n(m->arg, qp_solver_phaseI_.n_in(), nullptr);
@@ -1107,7 +1196,7 @@ int Sqpmethod::solve_phaseI_QP(SqpmethodMemory* m, const double* H, const double
   m->res[CONIC_X] = x_opt;
   m->res[CONIC_LAM_X] = dlam;
   m->res[CONIC_LAM_A] = dlam + nx_ + 2*ng_;
-  double cost;
+  // double cost;
   m->res[CONIC_COST] = &cost;
 
   // Solve the QP
@@ -1208,7 +1297,7 @@ int Sqpmethod::solve_elastic_mode(SqpmethodMemory* m,
   }
 
   // Solve the QP
-  int ret = solve_phaseI_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk, d->dx, d->dlam);
+  int ret = solve_phaseI_QP(m, d->Bk, d->gf, d->lbdz, d->ubdz, d->Jk, d->dx, d->dlam, d->d_QP_cost);
 
   if (mode == 0) *info = "Elastic mode QP (gamma = " + str(gamma) + ")";
 

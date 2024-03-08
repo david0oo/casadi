@@ -1185,7 +1185,7 @@ int ToleranceTubeMethod::solve(void* mem) const {
         ret = solve_LP(m, d->gf, d->lbdz, d->ubdz, d->Jk,
                 d->dx, d->dlam);
       }
-
+      // ret = 1;
       // }
       //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%  
       // Check if LP/QP could be solved --> activate either restoration phase or step update procedure
@@ -1251,6 +1251,10 @@ int ToleranceTubeMethod::solve(void* mem) const {
           }
         }
 
+        std::cout << "Jacobian: " << std::vector<double>(d->Jk_restoration,d->Jk_restoration+Asp_.nnz() + 2*ng_) << std::endl;
+        std::cout << "gradient: " << std::vector<double>(d->gf_restoration,d->gf_restoration+nx_+2*ng_) << std::endl;
+        std::cout << "lbdz: " << std::vector<double>(d->lbdz,d->lbdz+nx_+3*ng_) << std::endl;
+        std::cout << "ubdz: " << std::vector<double>(d->ubdz,d->ubdz+nx_+3*ng_) << std::endl;
         // Solve the QP
         int ret = solve_restoration_LP(m, d->gf_restoration,
                                         d->lbdz_restoration, d->ubdz_restoration, d->Jk_restoration, d->dx_restoration, d->dlam_restoration);

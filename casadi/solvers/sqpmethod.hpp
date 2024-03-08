@@ -111,6 +111,8 @@ namespace casadi {
     void set_work(void* mem, const double**& arg, double**& res,
                           casadi_int*& iw, double*& w) const override;
 
+    void evaluate_g(SqpmethodMemory* m, double* input_z, const double* parameter, double* output) const;
+
     // Evaluate the f,g functions and their gradient or jacobian
     int evaluate_jac_fg(SqpmethodMemory* m, double* input_z, const double* parameter, double& output_f, double* output_gradient, double* output_g, double* output_jacobian) const;
     
@@ -173,6 +175,9 @@ namespace casadi {
     // Hessian Sparsity
     Sparsity Hsp_;
 
+    // Hessian Sparsity Phase I
+    Sparsity Hsp_phaseI_;
+
     // Jacobian sparsity
     Sparsity Asp_;
 
@@ -217,7 +222,7 @@ namespace casadi {
     // Solve the QP subproblem for elastic mode
     virtual int solve_phaseI_QP(SqpmethodMemory* m, const double* H, const double* g,
       const double* lbdz, const double* ubdz, const double* A,
-      double* x_opt, double* dlam) const;
+      double* x_opt, double* dlam, double cost) const;
 
     // Execute elastic mode: mode 0 = normal, mode 1 = SOC
     virtual int solve_elastic_mode(SqpmethodMemory* m, casadi_int* ela_it, double gamma_1,
@@ -243,7 +248,13 @@ namespace casadi {
     // Calculate gamma_1
     double calc_gamma_1(SqpmethodMemory* m) const;
 
-    /// Print iteration header
+    // Phase I line search function
+    int phaseI_line_search(SqpmethodMemory* m) const;
+
+    /// Prepare the matrices of phase I QP
+    void prepare_data_for_phaseI_QP(SqpmethodMemory* m) const;
+
+    /// Do the phase I of the algorithm
     void do_phaseI(SqpmethodMemory* m) const;
 
     /// A documentation string

@@ -46,6 +46,7 @@ struct casadi_sqpmethod_data {
   T1 *lbdz, *ubdz;
   // QP solution
   T1 *dx, *dlam;
+  T1 d_QP_cost; //QP cost function
   // Hessian approximation
   T1 *Bk;
   // Jacobian
