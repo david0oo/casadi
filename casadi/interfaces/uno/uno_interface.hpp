@@ -118,7 +118,7 @@ namespace casadi {
     int init_mem(void* mem) const override;
 
     /** \brief Free memory block */
-    void free_mem(void *mem) const override { delete static_cast<UnoMemory*>(mem);}
+    void free_mem(void *mem) const override;
 
     /** \brief Set the (persistent) work vectors */
     void set_work(void* mem, const double**& arg, double**& res,

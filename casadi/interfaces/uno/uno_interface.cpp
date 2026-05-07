@@ -73,13 +73,22 @@ namespace casadi {
      }
   };
 
-  UnoMemory::UnoMemory(const UnoInterface& uno_interface) : self(uno_interface), NlpsolMemory()
-  {
+  UnoMemory::UnoMemory(const UnoInterface& uno_interface)
+      : self(uno_interface), NlpsolMemory() {
     this->return_status = "Unset";
+    this->model = nullptr;
+    this->solver = nullptr;
+    this->uno_nlp = nullptr;
   }
 
-  UnoMemory::~UnoMemory()
-  {
+  UnoMemory::~UnoMemory() {
+    if (this->model)  uno_destroy_model(this->model);
+    if (this->solver) uno_destroy_solver(this->solver);
+    delete static_cast<UnoNlp*>(this->uno_nlp);
+  }
+
+  void UnoInterface::free_mem(void* mem) const {
+    delete static_cast<UnoMemory*>(mem);
   }
 
   /*------------------------------------------
@@ -270,9 +279,11 @@ inline const char* return_status_string(void* solver) {
     UnoNlp* nlp = static_cast<UnoNlp*>(m->uno_nlp);
     auto d_nlp = &m->d_nlp;
     
-    // model creation
+    // model creation; previous-call model (if any) is destroyed first
+    if (m->model) { uno_destroy_model(m->model); m->model = nullptr; }
     const uno_int base_indexing = UNO_ZERO_BASED_INDEXING;
     void* model = uno_create_model(UNO_PROBLEM_NONLINEAR, nx_, d_nlp->lbz, d_nlp->ubz, base_indexing);
+    m->model = model;
     // set NLP
     uno_int ret;
     ret = uno_set_user_data(model, nlp);
