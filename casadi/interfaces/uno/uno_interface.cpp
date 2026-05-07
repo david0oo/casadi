@@ -104,7 +104,8 @@ namespace casadi {
   }
 
   void UnoInterface::set_uno_prob() {
-    p_uno_.nlp = &p_nlp_;
+    p_uno_.nx = static_cast<uno_int>(nx_);
+    p_uno_.ng = static_cast<uno_int>(ng_);
     p_uno_.sp_a = jacg_sp_;
     p_uno_.sp_h = hesslag_sp_;
     p_uno_.jac_row  = jacobian_row_indices_.data();
@@ -276,7 +277,19 @@ namespace casadi {
   void UnoInterface::codegen_init_mem(CodeGenerator& g) const {
     g.local("d", "struct casadi_uno_data*");
     g.init_local("d", "&" + codegen_mem(g));
+    // Static prob: nx/ng + sparsity + callbacks are problem-invariant, so
+    // the prob struct lives forever (one per generated function). Storing
+    // it function-scope-static lets us call uno_create_model from init_mem,
+    // matching the C++ vm path's "build everything at allocation time".
+    g.local("p", "static struct casadi_uno_prob");
+    set_uno_prob(g);
+    g << "d->prob = &p;\n";
     g << "casadi_uno_init_mem(d);\n";
+    g << "casadi_uno_init_model(d, "
+      << g.constant(placeholder_lb_x_) << ", "
+      << g.constant(placeholder_ub_x_) << ", "
+      << g.constant(placeholder_lb_g_) << ", "
+      << g.constant(placeholder_ub_g_) << ");\n";
     // Apply user options (statically known at codegen time).
     for (auto&& kv : opts_) {
       const std::string& key = kv.first;
@@ -320,7 +333,8 @@ namespace casadi {
   }
 
   void UnoInterface::set_uno_prob(CodeGenerator& g) const {
-    g << "p.nlp      = &p_nlp;\n";
+    g << "p.nx       = " << nx_ << ";\n";
+    g << "p.ng       = " << ng_ << ";\n";
     g << "p.sp_a     = " << g.sparsity(jacg_sp_)    << ";\n";
     g << "p.sp_h     = " << g.sparsity(hesslag_sp_) << ";\n";
     // Uno wants uno_int (32-bit) row/col arrays; g.constant emits casadi_int
@@ -360,14 +374,6 @@ namespace casadi {
     codegen_body_enter(g);
     g.local("d", "struct casadi_uno_data*");
     g.init_local("d", "&" + codegen_mem(g));
-    // Per-call setup of the prob struct (nlp / sparsity / callbacks). p_nlp
-    // and d_nlp are both per-call locals declared by codegen_body_enter, so
-    // the prob's nlp pointer has to be re-set every call. The OracleCallback
-    // entries are per-call too because g.setup_callback emits inline
-    // statements binding the file-scope eval pointers to the callback names.
-    g.local("p", "struct casadi_uno_prob");
-    set_uno_prob(g);
-    g << "d->prob = &p;\n";
     g << "d->nlp = &d_nlp;\n";
     g << "casadi_uno_init(d, &arg, &res, &iw, &w);\n";
     g << "casadi_oracle_init(d->nlp->oracle, &arg, &res, &iw, &w);\n";

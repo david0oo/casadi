@@ -28,7 +28,13 @@
 // SYMBOL "uno_prob"
 template<typename T1>
 struct casadi_uno_prob {
-  const casadi_nlpsol_prob<T1>* nlp;
+  // nx / ng kept directly on prob (rather than dereferencing nlp->nx) so the
+  // prob has no dependency on the per-call p_nlp local emitted by Nlpsol::
+  // codegen_body_enter. That lets the codegen path build the prob in
+  // codegen_init_mem (file-scope static) and call uno_create_model there,
+  // matching the C++ vm path's "build everything at init_mem" pattern.
+  uno_int nx;
+  uno_int ng;
   const casadi_int* sp_a;
   const casadi_int* sp_h;
   const uno_int* jac_row;
@@ -172,8 +178,8 @@ template<typename T1>
 void casadi_uno_init_model(casadi_uno_data<T1>* d,
     const T1* lb_x, const T1* ub_x, const T1* lb_g, const T1* ub_g) {
   const casadi_uno_prob<T1>* p = d->prob;
-  uno_int nx = (uno_int) p->nlp->nx;
-  uno_int ng = (uno_int) p->nlp->ng;
+  uno_int nx = p->nx;
+  uno_int ng = p->ng;
 
   d->model = uno_create_model(UNO_PROBLEM_NONLINEAR, nx,
       lb_x, ub_x, UNO_ZERO_BASED_INDEXING);
@@ -216,8 +222,8 @@ template<typename T1>
 void casadi_uno_solve(casadi_uno_data<T1>* d) {
   const casadi_uno_prob<T1>* p = d->prob;
   casadi_nlpsol_data<T1>* d_nlp = d->nlp;
-  uno_int nx = (uno_int) p->nlp->nx;
-  uno_int ng = (uno_int) p->nlp->ng;
+  uno_int nx = p->nx;
+  uno_int ng = p->ng;
   casadi_int i;
 
   if (!d->model) {
