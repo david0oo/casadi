@@ -159,7 +159,6 @@ namespace casadi {
 
 inline const char* return_status_string(void* solver) {
     uno_int iterate_status = uno_get_solution_status(solver);
-    assert(iterate_status == UNO_FEASIBLE_KKT_POINT);
     if (iterate_status == UNO_FEASIBLE_KKT_POINT)
     {
       return "Converged with feasible KKT point";
@@ -278,24 +277,17 @@ inline const char* return_status_string(void* solver) {
 
     // run 1: solve with no Hessian. Uno defaults to L-BFGS Hessian for NLPs
     uno_optimize(m->solver, model);
-    // get the solution
-    uno_int optimization_status = uno_get_optimization_status(m->solver);
-    assert(optimization_status == UNO_SUCCESS);
-    uno_int iterate_status = uno_get_solution_status(m->solver);
-    assert(iterate_status == UNO_FEASIBLE_KKT_POINT);
-    double solution_objective = uno_get_solution_objective(m->solver);
-    printf("Solution objective = %g\n", solution_objective);
+    // get the solution; tolerate non-success outcomes (caller decides what to do)
 
     uno_get_primal_solution(m->solver, d_nlp->z);
     // Get dual solution (constraints)
     uno_get_constraint_dual_solution(m->solver, d_nlp->lam+nx_);
-    // Get dual solution (simple bounds)
+    // CasADi convention: lam_x neg when LBX active, pos when UBX active. Empirical match for Uno UNO_MULTIPLIER_POSITIVE.
     for (casadi_int i=0; i<nx_; ++i) {
-      d_nlp->lam[i] = uno_get_upper_bound_dual_solution_component(m->solver, i)-uno_get_lower_bound_dual_solution_component(m->solver, i);
+      d_nlp->lam[i] = uno_get_lower_bound_dual_solution_component(m->solver, i)
+                    - uno_get_upper_bound_dual_solution_component(m->solver, i);
     }
 
-    // Write the solution to Casadi .....
-    // Negate rc to match CasADi's definition
     m->return_status = return_status_string(m->solver);
     m->success = return_status_success(m->solver);
     // Get optimal cost
