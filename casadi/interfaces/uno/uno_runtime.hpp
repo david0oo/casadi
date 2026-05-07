@@ -28,13 +28,14 @@
 // SYMBOL "uno_prob"
 template<typename T1>
 struct casadi_uno_prob {
-  // p_nlp lives here (not on casadi_uno_data) because it's per-Function-
-  // instance constant -- nx / ng / np / detect_bounds.* don't change between
-  // memory blocks. d->nlp.prob points at this field via the codegen_setup_
-  // constants emission (or via a manual override in C++ set_work).
-  casadi_nlpsol_prob<T1> p_nlp;
-  // nx / ng duplicated outside p_nlp as uno_int (32-bit) so the runtime
-  // helpers don't have to chain through nlp->nx (which would force the
+  // nlp here is the casadi_nlpsol_prob (per-Function-constant); on
+  // casadi_uno_data, the field "nlp" is a casadi_nlpsol_data (per-mem-block,
+  // mutable scratch). Same name, different struct, no ambiguity.
+  // d->nlp.prob (the data side) points at &prob->nlp (this side) via
+  // codegen_setup_constants emission (or a manual override in C++ set_work).
+  casadi_nlpsol_prob<T1> nlp;
+  // nx / ng duplicated outside nlp as uno_int (32-bit) so the runtime
+  // helpers don't have to chain through ->nlp.nx (which would force the
   // codegen prob to depend on the per-call p_nlp local).
   uno_int nx;
   uno_int ng;
