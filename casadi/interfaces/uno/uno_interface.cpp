@@ -120,11 +120,20 @@ namespace casadi {
     hesslag_sp_ = hess_l_fcn.sparsity_out(0);
     casadi_assert(hesslag_sp_.is_triu(), "Hessian must be upper triangular");
 
-    // Allocate persistent memory
-    alloc_w(nx_, true); // wlbx_
-    alloc_w(nx_, true); // wubx_
-    alloc_w(ng_, true); // wlbg_
-    alloc_w(ng_, true); // wubg_
+    // Pre-compute problem-invariant sparsity index arrays (used by
+    // uno_set_constraints / uno_set_lagrangian_hessian).
+    {
+      auto jr = jacg_sp_.get_row();
+      auto jc = jacg_sp_.get_col();
+      jacobian_row_indices_.assign(jr.begin(), jr.end());
+      jacobian_column_indices_.assign(jc.begin(), jc.end());
+    }
+    {
+      auto hr = hesslag_sp_.get_row();
+      auto hc = hesslag_sp_.get_col();
+      hessian_row_indices_.assign(hr.begin(), hr.end());
+      hessian_column_indices_.assign(hc.begin(), hc.end());
+    }
   }
 
   static uno_int casadi_uno_termination_cb(uno_int, uno_int, const double*,
@@ -143,10 +152,45 @@ namespace casadi {
     m->uno_nlp = new UnoNlp(m);
     m->solver = uno_create_solver();
     uno_set_solver_callbacks(m->solver, nullptr, &casadi_uno_termination_cb, m);
-    // define preset and insert options given through  
     UnoNlp::insert_casadi_options(m->solver, opts_);
-   return 0;
 
+    // Build the model once. Bounds get patched per solve via
+    // uno_set_{variables,constraints}_{lower,upper}_bounds. uno_create_model
+    // copies the bounds it's given (uno_create_model = uno_create_unconstrained_model
+    // + uno_set_variables_*_bounds), so a placeholder is fine.
+    std::vector<double> placeholder_lb(nx_, -std::numeric_limits<double>::infinity());
+    std::vector<double> placeholder_ub(nx_,  std::numeric_limits<double>::infinity());
+    m->model = uno_create_model(UNO_PROBLEM_NONLINEAR, nx_,
+        placeholder_lb.data(), placeholder_ub.data(), UNO_ZERO_BASED_INDEXING);
+
+    bool ok = uno_set_user_data(m->model, m->uno_nlp);
+    casadi_assert(ok, "uno_set_user_data failed");
+
+    ok = uno_set_objective(m->model, UNO_MINIMIZE,
+        UnoNlp::objective_function_wrapper, UnoNlp::objective_gradient_wrapper);
+    casadi_assert(ok, "uno_set_objective failed");
+
+    if (ng_ > 0) {
+      std::vector<double> placeholder_g_lb(ng_, -std::numeric_limits<double>::infinity());
+      std::vector<double> placeholder_g_ub(ng_,  std::numeric_limits<double>::infinity());
+      ok = uno_set_constraints(m->model, ng_, UnoNlp::constraint_functions_wrapper,
+          placeholder_g_lb.data(), placeholder_g_ub.data(),
+          static_cast<uno_int>(jacobian_row_indices_.size()),
+          jacobian_row_indices_.data(), jacobian_column_indices_.data(),
+          UnoNlp::jacobian_wrapper);
+      casadi_assert(ok, "uno_set_constraints failed");
+    }
+
+    ok = uno_set_lagrangian_hessian(m->model,
+        static_cast<uno_int>(hessian_row_indices_.size()), UNO_UPPER_TRIANGLE,
+        hessian_row_indices_.data(), hessian_column_indices_.data(),
+        UnoNlp::lagrangian_hessian_wrapper);
+    casadi_assert(ok, "uno_set_lagrangian_hessian failed");
+
+    ok = uno_set_lagrangian_sign_convention(m->model, UNO_MULTIPLIER_POSITIVE);
+    casadi_assert(ok, "uno_set_lagrangian_sign_convention failed");
+
+    return 0;
   }
 //----------------------------------------------------------
 
@@ -273,74 +317,27 @@ inline const char* return_status_string(void* solver) {
     return SOLVER_RET_UNKNOWN;
   }
     
-    int UnoInterface::solve(void* mem) const 
-    {
+  int UnoInterface::solve(void* mem) const {
     auto m = static_cast<UnoMemory*>(mem);
-    UnoNlp* nlp = static_cast<UnoNlp*>(m->uno_nlp);
     auto d_nlp = &m->d_nlp;
-    
-    // model creation; previous-call model (if any) is destroyed first
-    if (m->model) { uno_destroy_model(m->model); m->model = nullptr; }
-    const uno_int base_indexing = UNO_ZERO_BASED_INDEXING;
-    void* model = uno_create_model(UNO_PROBLEM_NONLINEAR, nx_, d_nlp->lbz, d_nlp->ubz, base_indexing);
-    m->model = model;
-    // set NLP
-    uno_int ret;
-    ret = uno_set_user_data(model, nlp);
 
-    // constraints
-    const uno_int number_jacobian_nonzeros = static_cast<size_t>(this->jacg_sp_.nnz());
-    std::vector<casadi_int> jac_row_indices = this->jacg_sp_.get_row();
-    std::vector<casadi_int> jac_column_indices = this->jacg_sp_.get_col();
-    std::vector<uno_int> jacobian_row_indices(jac_row_indices.size());
-    std::vector<uno_int> jacobian_column_indices(jac_column_indices.size());
-
-    for (uno_int i = 0; i < number_jacobian_nonzeros; ++i) {
-        jacobian_row_indices[i] = static_cast<uno_int>(jac_row_indices[i]);
-        jacobian_column_indices[i] = static_cast<uno_int>(jac_column_indices[i]);
-    }
-
-    // Hessian
-    const uno_int number_hessian_nonzeros = static_cast<size_t>(this->hesslag_sp_.nnz());
-    std::vector<casadi_int> hess_row_indices = this->hesslag_sp_.get_row();
-    std::vector<casadi_int> hess_column_indices = this->hesslag_sp_.get_col();
-    std::vector<uno_int> hessian_row_indices(hess_row_indices.size());
-    std::vector<uno_int> hessian_column_indices(hess_column_indices.size());
-    
-    for (uno_int i = 0; i < number_hessian_nonzeros; ++i)
-    {
-      hessian_row_indices[i] = static_cast<uno_int>(hess_row_indices[i]);
-      hessian_column_indices[i] = static_cast<uno_int>(hess_column_indices[i]);
-    }
-    const char hessian_triangular_part = UNO_UPPER_TRIANGLE;
-    const uno_int lagrangian_sign_convention = UNO_MULTIPLIER_POSITIVE;
-
-    // Uno's uno_set_* returns bool: true on success, false on failure.
-    ret = uno_set_objective(model, UNO_MINIMIZE,
-        UnoNlp::objective_function_wrapper, UnoNlp::objective_gradient_wrapper);
-    casadi_assert(ret, "uno_set_objective failed");
-
+    // Per-call: only update bounds + initial iterate. Model + sparsities +
+    // callbacks were set once in init_mem.
+    bool ok = uno_set_variables_lower_bounds(m->model, d_nlp->lbz);
+    casadi_assert(ok, "uno_set_variables_lower_bounds failed");
+    ok = uno_set_variables_upper_bounds(m->model, d_nlp->ubz);
+    casadi_assert(ok, "uno_set_variables_upper_bounds failed");
     if (ng_ > 0) {
-      ret = uno_set_constraints(model, ng_, UnoNlp::constraint_functions_wrapper,
-            d_nlp->lbz+nx_, d_nlp->ubz+nx_, number_jacobian_nonzeros,
-            jacobian_row_indices.data(), jacobian_column_indices.data(),
-            UnoNlp::jacobian_wrapper);
-      casadi_assert(ret, "uno_set_constraints failed");
+      ok = uno_set_constraints_lower_bounds(m->model, d_nlp->lbz + nx_);
+      casadi_assert(ok, "uno_set_constraints_lower_bounds failed");
+      ok = uno_set_constraints_upper_bounds(m->model, d_nlp->ubz + nx_);
+      casadi_assert(ok, "uno_set_constraints_upper_bounds failed");
     }
-
-    ret = uno_set_lagrangian_hessian(model, number_hessian_nonzeros,
-        hessian_triangular_part, hessian_row_indices.data(),
-        hessian_column_indices.data(), UnoNlp::lagrangian_hessian_wrapper);
-    casadi_assert(ret, "uno_set_lagrangian_hessian failed");
-
-    ret = uno_set_lagrangian_sign_convention(model, lagrangian_sign_convention);
-    casadi_assert(ret, "uno_set_lagrangian_sign_convention failed");
-
-    ret = uno_set_initial_primal_iterate(model, d_nlp->x0);
-    casadi_assert(ret, "uno_set_initial_primal_iterate failed");
+    ok = uno_set_initial_primal_iterate(m->model, d_nlp->x0);
+    casadi_assert(ok, "uno_set_initial_primal_iterate failed");
 
     m->cb_exception = nullptr;
-    uno_optimize(m->solver, model);
+    uno_optimize(m->solver, m->model);
     if (m->cb_exception) std::rethrow_exception(m->cb_exception);
 
     uno_get_primal_solution(m->solver, d_nlp->z);

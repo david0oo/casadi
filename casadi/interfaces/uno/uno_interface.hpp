@@ -136,6 +136,11 @@ namespace casadi {
     /// A documentation string
     static const std::string meta_doc;
 
+    // Problem-invariant sparsity index arrays (filled once in init()).
+    std::vector<uno_int> jacobian_row_indices_;
+    std::vector<uno_int> jacobian_column_indices_;
+    std::vector<uno_int> hessian_row_indices_;
+    std::vector<uno_int> hessian_column_indices_;
   };
 
 } // namespace casadi
