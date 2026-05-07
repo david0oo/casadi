@@ -78,6 +78,15 @@ struct casadi_uno_data {
   T1 stationarity;
   T1 complementarity;
   uno_int iter_count;
+  // Persistent storage for the per-call NLP scratch: by-value fields so the
+  // codegen path can skip Nlpsol::codegen_body_enter (which would otherwise
+  // emit these as per-call function-scope locals) and instead call
+  // Nlpsol::codegen_setup with "d->d_nlp_storage" / "d->p_nlp_storage" /
+  // "d->d_oracle_storage" lvalues -- everything lives on the per-mem-block
+  // memory, nothing on the per-call stack.
+  casadi_nlpsol_data<T1> d_nlp_storage;
+  casadi_nlpsol_prob<T1> p_nlp_storage;
+  casadi_oracle_data<T1> d_oracle_storage;
 };
 // C-REPLACE "casadi_uno_data<T1>" "struct casadi_uno_data"
 
