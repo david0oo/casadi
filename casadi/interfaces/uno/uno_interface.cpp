@@ -104,6 +104,10 @@ namespace casadi {
   }
 
   void UnoInterface::set_uno_prob() {
+    // Mirror Nlpsol's p_nlp_ into our prob's p_nlp by-value -- so the C++ vm
+    // and codegen paths agree on a single canonical location. Set_work then
+    // points m->d_uno.nlp.prob at &p_uno_.p_nlp.
+    p_uno_.p_nlp = p_nlp_;
     p_uno_.nx = static_cast<uno_int>(nx_);
     p_uno_.ng = static_cast<uno_int>(ng_);
     p_uno_.sp_a = jacg_sp_;
@@ -199,13 +203,16 @@ namespace casadi {
     Nlpsol::set_work(mem, arg, res, iw, w);
     auto m = static_cast<UnoMemory*>(mem);
     // Mirror NlpsolMemory's d_nlp into the by-value field on casadi_uno_data
-    // (the runtime helpers and codegen path both read d->nlp.* there).
+    // (the runtime helpers and codegen path both read d->nlp.* there). Then
+    // retarget the prob pointer at our own p_uno_.p_nlp -- the canonical
+    // copy that the codegen path also references.
     m->d_uno.nlp = m->d_nlp;
+    m->d_uno.nlp.prob = &p_uno_.p_nlp;
     // Wiring trap (cf casadi_nlpsol_plugin skill): the OracleCallback path
     // dispatches via cb->oracle_->calc_function(d->m, ...). Without this set,
     // d->m is NULL on the first eval and the plugin segfaults.
     m->d_nlp.oracle->m = static_cast<void*>(m);
-    m->d_uno.nlp.oracle = m->d_nlp.oracle;  // keep mirrored copy in sync
+    m->d_uno.nlp.oracle = m->d_nlp.oracle;
   }
 
   namespace {
@@ -291,8 +298,7 @@ namespace casadi {
     // locals via Nlpsol::codegen_body_enter; uno opts out of that and uses
     // the by-value fields on casadi_uno_data instead.)
     g << "\n";
-    Nlpsol::codegen_setup_constants(g, "d->nlp", "d->p_nlp",
-        "d->d_oracle");
+    Nlpsol::codegen_setup_constants(g, "d->nlp", "p.p_nlp", "d->d_oracle");
     g << "casadi_uno_init_mem(d);\n";
     g << "casadi_uno_init_model(d, "
       << g.constant(placeholder_lb_x_) << ", "

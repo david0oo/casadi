@@ -28,11 +28,14 @@
 // SYMBOL "uno_prob"
 template<typename T1>
 struct casadi_uno_prob {
-  // nx / ng kept directly on prob (rather than dereferencing nlp->nx) so the
-  // prob has no dependency on the per-call p_nlp local emitted by Nlpsol::
-  // codegen_body_enter. That lets the codegen path build the prob in
-  // codegen_init_mem (file-scope static) and call uno_create_model there,
-  // matching the C++ vm path's "build everything at init_mem" pattern.
+  // p_nlp lives here (not on casadi_uno_data) because it's per-Function-
+  // instance constant -- nx / ng / np / detect_bounds.* don't change between
+  // memory blocks. d->nlp.prob points at this field via the codegen_setup_
+  // constants emission (or via a manual override in C++ set_work).
+  casadi_nlpsol_prob<T1> p_nlp;
+  // nx / ng duplicated outside p_nlp as uno_int (32-bit) so the runtime
+  // helpers don't have to chain through nlp->nx (which would force the
+  // codegen prob to depend on the per-call p_nlp local).
   uno_int nx;
   uno_int ng;
   const casadi_int* sp_a;
@@ -81,8 +84,8 @@ struct casadi_uno_data {
   // Nlpsol::codegen_body_enter (which would otherwise emit these as
   // per-call function-scope locals) and writes through these instead; the
   // C++ vm path mirrors NlpsolMemory's d_nlp into nlp at set_work time.
+  // (p_nlp lives on casadi_uno_prob -- it's per-Function-constant.)
   casadi_nlpsol_data<T1> nlp;
-  casadi_nlpsol_prob<T1> p_nlp;
   casadi_oracle_data<T1> d_oracle;
 };
 // C-REPLACE "casadi_uno_data<T1>" "struct casadi_uno_data"
