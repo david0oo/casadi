@@ -119,22 +119,16 @@ namespace casadi {
   }
 
   int UnoInterface::init_mem(void* mem) const {
-    int return_nlpsol = Nlpsol::init_mem(mem);
-    if (return_nlpsol > 0){
-      printf("Return code: %d!", return_nlpsol);
-    }
+    if (Nlpsol::init_mem(mem)) return 1;
     auto m = static_cast<UnoMemory*>(mem);
 
-// -------------------------------------------------------------------
-    uno_int uno_major, uno_minor, uno_patch;
-    uno_get_version(&uno_major, &uno_minor, &uno_patch);
-    printf("Uno v%d.%d.%d\n", uno_major, uno_minor, uno_patch);
+    if (verbose_) {
+      uno_int uno_major, uno_minor, uno_patch;
+      uno_get_version(&uno_major, &uno_minor, &uno_patch);
+      casadi_message("Using Uno v" + str(uno_major) + "." + str(uno_minor) + "." + str(uno_patch));
+    }
 
     m->uno_nlp = new UnoNlp(m);
-
-   // Casadi model
-   // memory should be freed somewhere else
-    // m->model = uno_create_model(UNO_PROBLEM_NONLINEAR, number_variables, variables_lower_bounds, variables_upper_bounds, base_indexing);
     m->solver = uno_create_solver();
     // define preset and insert options given through  
     UnoNlp::insert_casadi_options(m->solver, opts_);
@@ -244,45 +238,37 @@ inline const char* return_status_string(void* solver) {
       hessian_column_indices[i] = static_cast<uno_int>(hess_column_indices[i]);
     }
     const char hessian_triangular_part = UNO_UPPER_TRIANGLE;
-    const uno_int lagrangian_sign_convention = UNO_MULTIPLIER_POSITIVE;    
-    
-    // objective
-    ret = uno_set_objective(model, UNO_MINIMIZE, UnoNlp::objective_function_wrapper, UnoNlp::objective_gradient_wrapper);
-    printf("uno_set_objective returned: %d\n", ret);
-    // if (ret != 0) {
-    //     printf("ERROR: Failed to set objective! Return code: %d\n", ret);
-    //     return 1;
-    // }
-    
-    ret = uno_set_constraints(model, ng_, UnoNlp::constraint_functions_wrapper,
-          d_nlp->lbz+nx_, d_nlp->ubz+nx_, number_jacobian_nonzeros,
-          jacobian_row_indices.data(), jacobian_column_indices.data(), UnoNlp::jacobian_wrapper);
-    printf("uno_set_constraints returned: %d\n", ret);
-    // if (ret != 0) {
-    //     printf("ERROR: Failed to set constraints! Return code: %d\n", ret);
-    //     return 1;
-    // }
-    ret = uno_set_lagrangian_hessian(model, number_hessian_nonzeros, hessian_triangular_part, hessian_row_indices.data(), hessian_column_indices.data(), UnoNlp::lagrangian_hessian_wrapper);
-    printf("uno_set_lagrangian_hessian returned: %d\n", ret);
-    ret = uno_set_lagrangian_sign_convention(model, lagrangian_sign_convention);
-    printf("uno_set_lagrangian_sign_convention returned: %d\n", ret);
-    
-    // ret = uno_set_initial_primal_iterate(model, x0);
-    ret = uno_set_initial_primal_iterate(model, d_nlp->x0);
-    printf("uno_set_initial_primal_iterate returned: %d\n", ret);
-    // if (ret != 0) {
-    //     printf("ERROR: Failed to set initial primal iterate! Return code: %d\n", ret);
-    //     return 1;
-    // }
+    const uno_int lagrangian_sign_convention = UNO_MULTIPLIER_POSITIVE;
 
-    // run 1: solve with no Hessian. Uno defaults to L-BFGS Hessian for NLPs
+    // Uno's uno_set_* returns bool: true on success, false on failure.
+    ret = uno_set_objective(model, UNO_MINIMIZE,
+        UnoNlp::objective_function_wrapper, UnoNlp::objective_gradient_wrapper);
+    casadi_assert(ret, "uno_set_objective failed");
+
+    if (ng_ > 0) {
+      ret = uno_set_constraints(model, ng_, UnoNlp::constraint_functions_wrapper,
+            d_nlp->lbz+nx_, d_nlp->ubz+nx_, number_jacobian_nonzeros,
+            jacobian_row_indices.data(), jacobian_column_indices.data(),
+            UnoNlp::jacobian_wrapper);
+      casadi_assert(ret, "uno_set_constraints failed");
+    }
+
+    ret = uno_set_lagrangian_hessian(model, number_hessian_nonzeros,
+        hessian_triangular_part, hessian_row_indices.data(),
+        hessian_column_indices.data(), UnoNlp::lagrangian_hessian_wrapper);
+    casadi_assert(ret, "uno_set_lagrangian_hessian failed");
+
+    ret = uno_set_lagrangian_sign_convention(model, lagrangian_sign_convention);
+    casadi_assert(ret, "uno_set_lagrangian_sign_convention failed");
+
+    ret = uno_set_initial_primal_iterate(model, d_nlp->x0);
+    casadi_assert(ret, "uno_set_initial_primal_iterate failed");
+
     uno_optimize(m->solver, model);
-    // get the solution; tolerate non-success outcomes (caller decides what to do)
 
     uno_get_primal_solution(m->solver, d_nlp->z);
-    // Get dual solution (constraints)
     uno_get_constraint_dual_solution(m->solver, d_nlp->lam+nx_);
-    // CasADi convention: lam_x neg when LBX active, pos when UBX active. Empirical match for Uno UNO_MULTIPLIER_POSITIVE.
+    // lam_x neg when LBX active, pos when UBX active (Uno UNO_MULTIPLIER_POSITIVE).
     for (casadi_int i=0; i<nx_; ++i) {
       d_nlp->lam[i] = uno_get_lower_bound_dual_solution_component(m->solver, i)
                     - uno_get_upper_bound_dual_solution_component(m->solver, i);
@@ -290,16 +276,12 @@ inline const char* return_status_string(void* solver) {
 
     m->return_status = return_status_string(m->solver);
     m->success = return_status_success(m->solver);
-    // Get optimal cost
     d_nlp->objective = uno_get_solution_objective(m->solver);
 
     m->primal_infeasbility = uno_get_solution_primal_feasibility(m->solver);
-    printf("Primal feasibility s solution = %e\n", m->primal_infeasbility);
     m->stationarity = uno_get_solution_stationarity(m->solver);
-    printf("Stationarity at solution = %e\n", m->stationarity);
     m->complementarity = uno_get_solution_complementarity(m->solver);
     m->iter_count = uno_get_number_iterations(m->solver);
-    printf("Complementarity at solution = %e\n", m->complementarity);
 
     return 0;
   }
