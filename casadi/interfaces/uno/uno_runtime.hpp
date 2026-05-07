@@ -63,7 +63,6 @@ struct casadi_uno_prob {
 template<typename T1>
 struct casadi_uno_data {
   const casadi_uno_prob<T1>* prob;
-  casadi_nlpsol_data<T1>* nlp;
   void* solver;
   void* model;
   // Fed by casadi_uno_init() each call so codegen_body_exit's post-solve
@@ -78,15 +77,13 @@ struct casadi_uno_data {
   T1 stationarity;
   T1 complementarity;
   uno_int iter_count;
-  // Persistent storage for the per-call NLP scratch: by-value fields so the
-  // codegen path can skip Nlpsol::codegen_body_enter (which would otherwise
-  // emit these as per-call function-scope locals) and instead call
-  // Nlpsol::codegen_setup with "d->d_nlp_storage" / "d->p_nlp_storage" /
-  // "d->d_oracle_storage" lvalues -- everything lives on the per-mem-block
-  // memory, nothing on the per-call stack.
-  casadi_nlpsol_data<T1> d_nlp_storage;
-  casadi_nlpsol_prob<T1> p_nlp_storage;
-  casadi_oracle_data<T1> d_oracle_storage;
+  // Persistent NLP scratch as by-value fields. The codegen path skips
+  // Nlpsol::codegen_body_enter (which would otherwise emit these as
+  // per-call function-scope locals) and writes through these instead; the
+  // C++ vm path mirrors NlpsolMemory's d_nlp into nlp at set_work time.
+  casadi_nlpsol_data<T1> nlp;
+  casadi_nlpsol_prob<T1> p_nlp;
+  casadi_oracle_data<T1> d_oracle;
 };
 // C-REPLACE "casadi_uno_data<T1>" "struct casadi_uno_data"
 
@@ -94,9 +91,9 @@ struct casadi_uno_data {
 template<typename T1>
 uno_int casadi_uno_obj_wrapper(uno_int n, const T1* x, T1* fval, void* user_data) {
   casadi_uno_data<T1>* d = static_cast< casadi_uno_data<T1>* >(user_data);
-  casadi_oracle_data<T1>* d_oracle = d->nlp->oracle;
+  casadi_oracle_data<T1>* d_oracle = d->nlp.oracle;
   d_oracle->arg[0] = x;
-  d_oracle->arg[1] = d->nlp->p;
+  d_oracle->arg[1] = d->nlp.p;
   d_oracle->res[0] = fval;
   return calc_function(&d->prob->nlp_f, d_oracle) == 0 ? 0 : 1;
 }
@@ -106,9 +103,9 @@ uno_int casadi_uno_obj_wrapper(uno_int n, const T1* x, T1* fval, void* user_data
 template<typename T1>
 uno_int casadi_uno_obj_grad_wrapper(uno_int n, const T1* x, T1* grad, void* user_data) {
   casadi_uno_data<T1>* d = static_cast< casadi_uno_data<T1>* >(user_data);
-  casadi_oracle_data<T1>* d_oracle = d->nlp->oracle;
+  casadi_oracle_data<T1>* d_oracle = d->nlp.oracle;
   d_oracle->arg[0] = x;
-  d_oracle->arg[1] = d->nlp->p;
+  d_oracle->arg[1] = d->nlp.p;
   d_oracle->res[0] = grad;
   return calc_function(&d->prob->nlp_grad_f, d_oracle) == 0 ? 0 : 1;
 }
@@ -118,9 +115,9 @@ uno_int casadi_uno_obj_grad_wrapper(uno_int n, const T1* x, T1* grad, void* user
 template<typename T1>
 uno_int casadi_uno_constr_wrapper(uno_int n, uno_int ng, const T1* x, T1* gval, void* user_data) {
   casadi_uno_data<T1>* d = static_cast< casadi_uno_data<T1>* >(user_data);
-  casadi_oracle_data<T1>* d_oracle = d->nlp->oracle;
+  casadi_oracle_data<T1>* d_oracle = d->nlp.oracle;
   d_oracle->arg[0] = x;
-  d_oracle->arg[1] = d->nlp->p;
+  d_oracle->arg[1] = d->nlp.p;
   d_oracle->res[0] = gval;
   return calc_function(&d->prob->nlp_g, d_oracle) == 0 ? 0 : 1;
 }
@@ -130,9 +127,9 @@ uno_int casadi_uno_constr_wrapper(uno_int n, uno_int ng, const T1* x, T1* gval, 
 template<typename T1>
 uno_int casadi_uno_jac_wrapper(uno_int n, uno_int nnz, const T1* x, T1* jvals, void* user_data) {
   casadi_uno_data<T1>* d = static_cast< casadi_uno_data<T1>* >(user_data);
-  casadi_oracle_data<T1>* d_oracle = d->nlp->oracle;
+  casadi_oracle_data<T1>* d_oracle = d->nlp.oracle;
   d_oracle->arg[0] = x;
-  d_oracle->arg[1] = d->nlp->p;
+  d_oracle->arg[1] = d->nlp.p;
   d_oracle->res[0] = jvals;
   return calc_function(&d->prob->nlp_jac_g, d_oracle) == 0 ? 0 : 1;
 }
@@ -143,9 +140,9 @@ template<typename T1>
 uno_int casadi_uno_hess_wrapper(uno_int n, uno_int ng, uno_int nnz,
     const T1* x, T1 obj_mult, const T1* mults, T1* hvals, void* user_data) {
   casadi_uno_data<T1>* d = static_cast< casadi_uno_data<T1>* >(user_data);
-  casadi_oracle_data<T1>* d_oracle = d->nlp->oracle;
+  casadi_oracle_data<T1>* d_oracle = d->nlp.oracle;
   d_oracle->arg[0] = x;
-  d_oracle->arg[1] = d->nlp->p;
+  d_oracle->arg[1] = d->nlp.p;
   d_oracle->arg[2] = &obj_mult;
   d_oracle->arg[3] = mults;
   d_oracle->res[0] = hvals;
@@ -230,7 +227,7 @@ void casadi_uno_init(casadi_uno_data<T1>* d, const T1*** arg, T1*** res,
 template<typename T1>
 void casadi_uno_solve(casadi_uno_data<T1>* d) {
   const casadi_uno_prob<T1>* p = d->prob;
-  casadi_nlpsol_data<T1>* d_nlp = d->nlp;
+  casadi_nlpsol_data<T1>* d_nlp = &d->nlp;
   uno_int nx = p->nx;
   uno_int ng = p->ng;
   casadi_int i;

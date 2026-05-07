@@ -182,7 +182,6 @@ namespace casadi {
     }
 
     m->d_uno.prob = &p_uno_;
-    m->d_uno.nlp  = &m->d_nlp;
     casadi_uno_init_mem<double>(&m->d_uno);
     casadi_uno_init_model<double>(&m->d_uno,
         placeholder_lb_x_.data(), placeholder_ub_x_.data(),
@@ -199,11 +198,14 @@ namespace casadi {
                               casadi_int*& iw, double*& w) const {
     Nlpsol::set_work(mem, arg, res, iw, w);
     auto m = static_cast<UnoMemory*>(mem);
-    m->d_uno.nlp = &m->d_nlp;
+    // Mirror NlpsolMemory's d_nlp into the by-value field on casadi_uno_data
+    // (the runtime helpers and codegen path both read d->nlp.* there).
+    m->d_uno.nlp = m->d_nlp;
     // Wiring trap (cf casadi_nlpsol_plugin skill): the OracleCallback path
     // dispatches via cb->oracle_->calc_function(d->m, ...). Without this set,
     // d->m is NULL on the first eval and the plugin segfaults.
     m->d_nlp.oracle->m = static_cast<void*>(m);
+    m->d_uno.nlp.oracle = m->d_nlp.oracle;  // keep mirrored copy in sync
   }
 
   namespace {
@@ -288,9 +290,9 @@ namespace casadi {
     // (Casadi convention has d_nlp/p_nlp/d_oracle as per-call function-scope
     // locals via Nlpsol::codegen_body_enter; uno opts out of that and uses
     // the by-value fields on casadi_uno_data instead.)
-    g << "d->nlp = &d->d_nlp_storage;\n";
-    Nlpsol::codegen_setup_constants(g, "d->d_nlp_storage", "d->p_nlp_storage",
-        "d->d_oracle_storage");
+    g << "\n";
+    Nlpsol::codegen_setup_constants(g, "d->nlp", "d->p_nlp",
+        "d->d_oracle");
     g << "casadi_uno_init_mem(d);\n";
     g << "casadi_uno_init_model(d, "
       << g.constant(placeholder_lb_x_) << ", "
@@ -383,11 +385,11 @@ namespace casadi {
     // and the codegen_setup_per_call call below (per-call wiring).
     g.local("d", "struct casadi_uno_data*");
     g.init_local("d", "&" + codegen_mem(g));
-    Nlpsol::codegen_setup_per_call(g, "d->d_nlp_storage");
+    Nlpsol::codegen_setup_per_call(g, "d->nlp");
     g << "casadi_uno_init(d, &arg, &res, &iw, &w);\n";
-    g << "casadi_oracle_init(&d->d_oracle_storage, &arg, &res, &iw, &w);\n";
+    g << "casadi_oracle_init(&d->d_oracle, &arg, &res, &iw, &w);\n";
     g << "casadi_uno_solve(d);\n";
-    Nlpsol::codegen_post_solve(g, "d->d_nlp_storage");
+    Nlpsol::codegen_post_solve(g, "d->nlp");
     g << "return 0;\n";
   }
 
