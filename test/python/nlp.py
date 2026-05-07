@@ -53,7 +53,12 @@ if "SKIP_SLEQP_TESTS" not in os.environ and has_nlpsol("sleqp"):
   solvers.append(("sleqp",{"print_time":False,"sleqp": {"linesearch": "Approx","feas_tol":1e-7,"stat_tol":1e-7,"slack_tol":1e-7, "hess_eval": "Exact"}},{"codegen": False,"discrete":False}))
 
 if "SKIP_UNO_TESTS" not in os.environ and has_nlpsol("uno"):
-  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp"}},{"codegen": False,"discrete":False}))
+  uno_inc = os.environ.get("UNO_INCLUDE_DIR",
+    os.path.expanduser("~/programs/casadi/build/external_projects/include/uno"))
+  uno_codegen = {"std": "c99", "extralibs": ["uno"],
+    "extra_options": ["-I" + uno_inc]}
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp"}},
+    {"codegen": uno_codegen, "discrete": False}))
 
 if "SKIP_ALPAQA_TESTS" not in os.environ and has_nlpsol("alpaqa"):
   solvers.append(("alpaqa",{"print_time":False,"alpaqa": {"alm.tolerance": 1e-10, "alm.dual_tolerance": 1e-10, "alm.penalty_update_factor": 10, "alm.max_iter": 3000, "alm.print_interval": 1, "panoc.max_iter": 500, "panoc.print_interval": 1, "lbfgs.memory": 2}},{"codegen": False,"discrete":False}))
