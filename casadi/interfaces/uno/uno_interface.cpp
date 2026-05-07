@@ -187,18 +187,29 @@ inline const char* return_status_string(void* solver) {
     }
   }
 
-  inline const bool return_status_success(void* solver)
-  {
-    uno_int optimization_status = uno_get_optimization_status(solver);
-    if (optimization_status == UNO_SUCCESS)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-      }
-    }
+  inline bool return_status_success(void* solver) {
+    return uno_get_optimization_status(solver) == UNO_SUCCESS
+        && uno_get_solution_status(solver) == UNO_FEASIBLE_KKT_POINT;
+  }
+
+  // Map Uno status pair -> CasADi UnifiedReturnStatus.
+  inline UnifiedReturnStatus unified_status_from_uno(void* solver) {
+    uno_int opt = uno_get_optimization_status(solver);
+    if (opt == UNO_EVALUATION_ERROR)   return SOLVER_RET_NAN;
+    if (opt == UNO_ITERATION_LIMIT)    return SOLVER_RET_LIMITED;
+    if (opt == UNO_TIME_LIMIT)         return SOLVER_RET_LIMITED;
+    if (opt == UNO_ALGORITHMIC_ERROR)  return SOLVER_RET_EXCEPTION;
+    if (opt == UNO_USER_TERMINATION)   return SOLVER_RET_UNKNOWN;
+    // opt == UNO_SUCCESS: refine via solution_status.
+    uno_int sol = uno_get_solution_status(solver);
+    if (sol == UNO_FEASIBLE_KKT_POINT)         return SOLVER_RET_SUCCESS;
+    if (sol == UNO_FEASIBLE_FJ_POINT)          return SOLVER_RET_SUCCESS;
+    if (sol == UNO_INFEASIBLE_STATIONARY_POINT) return SOLVER_RET_INFEASIBLE;
+    if (sol == UNO_INFEASIBLE_SMALL_STEP)      return SOLVER_RET_INFEASIBLE;
+    if (sol == UNO_FEASIBLE_SMALL_STEP)        return SOLVER_RET_LIMITED;
+    if (sol == UNO_UNBOUNDED)                  return SOLVER_RET_UNKNOWN;
+    return SOLVER_RET_UNKNOWN;
+  }
     
     int UnoInterface::solve(void* mem) const 
     {
@@ -276,6 +287,7 @@ inline const char* return_status_string(void* solver) {
 
     m->return_status = return_status_string(m->solver);
     m->success = return_status_success(m->solver);
+    m->unified_return_status = unified_status_from_uno(m->solver);
     d_nlp->objective = uno_get_solution_objective(m->solver);
 
     m->primal_infeasbility = uno_get_solution_primal_feasibility(m->solver);
