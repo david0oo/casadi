@@ -103,7 +103,15 @@ namespace casadi {
     int  solve(void* mem) const override;
     Dict get_stats(void* mem) const override;
 
+    void serialize_body(SerializingStream& s) const override;
+    static ProtoFunction* deserialize(DeserializingStream& s) {
+      return new UnoInterface(s);
+    }
+
     static const std::string meta_doc;
+
+  protected:
+    explicit UnoInterface(DeserializingStream& s);
 
   private:
     // NLP sparsities discovered in init().

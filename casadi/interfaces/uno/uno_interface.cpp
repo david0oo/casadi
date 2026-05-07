@@ -357,6 +357,28 @@ inline const char* return_status_string(void* solver) {
     return 0;
   }
 
+  void UnoInterface::serialize_body(SerializingStream& s) const {
+    Nlpsol::serialize_body(s);
+    s.version("UnoInterface", 1);
+    s.pack("UnoInterface::jacg_sp",    jacg_sp_);
+    s.pack("UnoInterface::hesslag_sp", hesslag_sp_);
+    s.pack("UnoInterface::opts",       opts_);
+  }
+
+  UnoInterface::UnoInterface(DeserializingStream& s) : Nlpsol(s) {
+    s.version("UnoInterface", 1);
+    s.unpack("UnoInterface::jacg_sp",    jacg_sp_);
+    s.unpack("UnoInterface::hesslag_sp", hesslag_sp_);
+    s.unpack("UnoInterface::opts",       opts_);
+    // Index arrays are derived from the sparsities, no need to ship them.
+    auto jr = jacg_sp_.get_row();    auto jc = jacg_sp_.get_col();
+    auto hr = hesslag_sp_.get_row(); auto hc = hesslag_sp_.get_col();
+    jacobian_row_indices_.assign(jr.begin(), jr.end());
+    jacobian_column_indices_.assign(jc.begin(), jc.end());
+    hessian_row_indices_.assign(hr.begin(), hr.end());
+    hessian_column_indices_.assign(hc.begin(), hc.end());
+  }
+
   Dict UnoInterface::get_stats(void* mem) const {
     Dict stats = Nlpsol::get_stats(mem);
     auto m = static_cast<UnoMemory*>(mem);
