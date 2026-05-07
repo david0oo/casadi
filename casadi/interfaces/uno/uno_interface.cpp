@@ -99,12 +99,14 @@ namespace casadi {
     // Call the init method of the base class
     Nlpsol::init(opts);
 
-    // Read user options
+    // Make Nlpsol base auto-fill res[NLPSOL_F] / res[NLPSOL_G] after solve.
+    calc_f_ = true;
+    calc_g_ = true;
+
     for (auto&& op : opts) {
       if (op.first=="uno") {
         opts_ = op.second;
       }
-
     }
 
     // Setup NLP functions
