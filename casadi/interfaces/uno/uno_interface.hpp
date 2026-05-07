@@ -63,10 +63,10 @@ namespace casadi {
     double primal_infeasbility;
     double stationarity;
     double complementarity;
-    /// Constructor
+    // Set by uno_termination_cb when the user iteration_callback throws or
+    // when iteration_callback_ignore_errors_ is false; rethrown after uno_optimize.
+    std::exception_ptr cb_exception;
     UnoMemory(const UnoInterface& uno_interface);
-
-    /// Destructor
     ~UnoMemory();
   };
 

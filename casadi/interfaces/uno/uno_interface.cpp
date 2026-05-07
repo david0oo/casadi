@@ -118,6 +118,9 @@ namespace casadi {
     alloc_w(ng_, true); // wubg_
   }
 
+  static uno_int casadi_uno_termination_cb(uno_int, uno_int, const double*,
+      const double*, const double*, const double*, double, double, double, double, void*);
+
   int UnoInterface::init_mem(void* mem) const {
     if (Nlpsol::init_mem(mem)) return 1;
     auto m = static_cast<UnoMemory*>(mem);
@@ -130,6 +133,7 @@ namespace casadi {
 
     m->uno_nlp = new UnoNlp(m);
     m->solver = uno_create_solver();
+    uno_set_solver_callbacks(m->solver, nullptr, &casadi_uno_termination_cb, m);
     // define preset and insert options given through  
     UnoNlp::insert_casadi_options(m->solver, opts_);
    return 0;
@@ -149,6 +153,55 @@ namespace casadi {
     std::string s(str);
     uout() << s << std::flush;
     return s.size();
+  }
+
+  // Uno's C API impl checks `termination_callback(...) == 0` to mean "terminate"
+  // (Uno_C_API.cpp ~ line 368), opposite of the header comment. So we return 0
+  // to terminate, non-zero to continue.
+  // Invokes the user's iteration_callback (Nlpsol::fcallback_) and propagates
+  // exceptions through m->cb_exception, which solve() rethrows after uno_optimize.
+  static uno_int casadi_uno_termination_cb(uno_int n, uno_int ng, const double* primals,
+      const double* lower_mult, const double* upper_mult, const double* constraint_mult,
+      double objective_multiplier, double inf_pr, double inf_du, double compl_res,
+      void* user_data) {
+    constexpr uno_int CONTINUE = 1;
+    constexpr uno_int TERMINATE = 0;
+    UnoMemory* m = static_cast<UnoMemory*>(user_data);
+    const UnoInterface& self = m->self;
+    if (self.fcallback_.is_null()) return CONTINUE;
+
+    auto d_nlp = &m->d_nlp;
+    casadi_copy(primals, self.nx_, d_nlp->z);
+    for (casadi_int i = 0; i < self.nx_; ++i) {
+      d_nlp->lam[i] = lower_mult[i] - upper_mult[i];
+    }
+    if (self.ng_ > 0) {
+      casadi_copy(constraint_mult, self.ng_, d_nlp->lam + self.nx_);
+    }
+    // f and g values aren't directly available; nullptrs are fine for
+    // iteration-interrupt-style callbacks that don't read them.
+    std::fill_n(m->arg, self.fcallback_.n_in(), nullptr);
+    m->arg[NLPSOL_X]     = d_nlp->z;
+    m->arg[NLPSOL_LAM_X] = d_nlp->lam;
+    m->arg[NLPSOL_LAM_G] = d_nlp->lam + self.nx_;
+    std::fill_n(m->res, self.fcallback_.n_out(), nullptr);
+    double ret_double = 0;
+    m->res[0] = &ret_double;
+
+    try {
+      self.fcallback_(m->arg, m->res, m->iw, m->w, 0);
+    } catch (KeyboardInterruptException&) {
+      m->cb_exception = std::current_exception();
+      return TERMINATE;
+    } catch (std::exception& ex) {
+      casadi_warning(std::string("intermediate_callback: ") + ex.what());
+      if (!self.iteration_callback_ignore_errors_) {
+        m->cb_exception = std::current_exception();
+        return TERMINATE;
+      }
+      return CONTINUE;
+    }
+    return static_cast<casadi_int>(ret_double) ? TERMINATE : CONTINUE;
   }
 
 inline const char* return_status_string(void* solver) {
@@ -275,7 +328,9 @@ inline const char* return_status_string(void* solver) {
     ret = uno_set_initial_primal_iterate(model, d_nlp->x0);
     casadi_assert(ret, "uno_set_initial_primal_iterate failed");
 
+    m->cb_exception = nullptr;
     uno_optimize(m->solver, model);
+    if (m->cb_exception) std::rethrow_exception(m->cb_exception);
 
     uno_get_primal_solution(m->solver, d_nlp->z);
     uno_get_constraint_dual_solution(m->solver, d_nlp->lam+nx_);
