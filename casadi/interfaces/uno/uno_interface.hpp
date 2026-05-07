@@ -81,66 +81,41 @@ namespace casadi {
   class CASADI_NLPSOL_UNO_EXPORT UnoInterface : public Nlpsol {
     friend class UnoNlp;
   public:
-
     explicit UnoInterface(const std::string& name, const Function& nlp);
     ~UnoInterface() override;
 
-    // Hessian Sparsity
-   Sparsity hesslag_sp_;
+    const char* plugin_name() const override { return "uno"; }
+    std::string class_name() const override { return "UnoInterface"; }
 
-   // Jacobian sparsity
-   Sparsity jacg_sp_;
-
-    // Get name of the plugin
-    const char* plugin_name() const override { return "uno";}
-
-    // Get name of the class
-    std::string class_name() const override { return "UnoInterface";}
-
-    /** \brief  Create a new NLP Solver */
     static Nlpsol* creator(const std::string& name, const Function& nlp) {
       return new UnoInterface(name, nlp);
     }
 
-    ///@{
-    /** \brief Options */
     static const Options options_;
-    const Options& get_options() const override { return options_;}
-    ///@}
+    const Options& get_options() const override { return options_; }
 
-    // Initialize the solver
     void init(const Dict& opts) override;
-
-    /** \brief Create memory block */
-    void* alloc_mem() const override { return new UnoMemory(*this);}
-
-    /** \brief Initalize memory block */
-    int init_mem(void* mem) const override;
-
-    /** \brief Free memory block */
-    void free_mem(void *mem) const override;
-
-    /** \brief Set the (persistent) work vectors */
+    void* alloc_mem() const override { return new UnoMemory(*this); }
+    int  init_mem(void* mem) const override;
+    void free_mem(void* mem) const override;
     void set_work(void* mem, const double**& arg, double**& res,
-                          casadi_int*& iw, double*& w) const override;
-
-    // Solve the NLP
-    int solve(void* mem) const override;
-
-    /// Get all statistics
+                  casadi_int*& iw, double*& w) const override;
+    int  solve(void* mem) const override;
     Dict get_stats(void* mem) const override;
 
-    // UNO options
-    Dict opts_;
-
-    /// A documentation string
     static const std::string meta_doc;
 
-    // Problem-invariant sparsity index arrays (filled once in init()).
+  private:
+    // NLP sparsities discovered in init().
+    Sparsity jacg_sp_;
+    Sparsity hesslag_sp_;
+    // Sparsity index arrays in Uno's int width, filled once in init().
     std::vector<uno_int> jacobian_row_indices_;
     std::vector<uno_int> jacobian_column_indices_;
     std::vector<uno_int> hessian_row_indices_;
     std::vector<uno_int> hessian_column_indices_;
+    // Solver-specific options forwarded to uno (the {"uno": {...}} dict).
+    Dict opts_;
   };
 
 } // namespace casadi

@@ -204,12 +204,6 @@ namespace casadi {
     auto m = static_cast<UnoMemory*>(mem);
   }
 
-  int casadi_KN_puts(const char * const str, void * const userParams) {
-    std::string s(str);
-    uout() << s << std::flush;
-    return s.size();
-  }
-
   // Uno's C API impl checks `termination_callback(...) == 0` to mean "terminate"
   // (Uno_C_API.cpp ~ line 368), opposite of the header comment. So we return 0
   // to terminate, non-zero to continue.

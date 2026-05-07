@@ -8,7 +8,3 @@ casadi_plugin(Nlpsol uno
   uno_nlp.cpp)
 
 casadi_plugin_link_libraries(Nlpsol uno uno)
-
-install(FILES
-  DESTINATION "${INCLUDE_PREFIX}/uno")
-  
