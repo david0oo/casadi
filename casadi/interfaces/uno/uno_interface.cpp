@@ -147,6 +147,7 @@ namespace casadi {
     p_uno_.nlp_grad_f = OracleCallback("nlp_grad_f", this);
     p_uno_.nlp_jac_g  = OracleCallback("nlp_jac_g", this);
     p_uno_.nlp_hess_l = OracleCallback("nlp_hess_l", this);
+    p_uno_.fwd1_nlp_grad_l = OracleCallback("fwd1_nlp_grad_l", this);
   }
 
   // C++ termination cb -- invokes Nlpsol::fcallback_ for opti.callback /
@@ -356,6 +357,7 @@ namespace casadi {
     g.add_dependency(get_function("nlp_grad_f"));
     g.add_dependency(get_function("nlp_jac_g"));
     g.add_dependency(get_function("nlp_hess_l"));
+    g.add_dependency(get_function("fwd1_nlp_grad_l"));
     g.add_include("Uno_C_API.h");
     g.auxiliaries << g.sanitize_source(uno_runtime_str, {"casadi_real"});
   }
@@ -389,6 +391,7 @@ namespace casadi {
     g.setup_callback("p.nlp_grad_f", get_function("nlp_grad_f"));
     g.setup_callback("p.nlp_jac_g",  get_function("nlp_jac_g"));
     g.setup_callback("p.nlp_hess_l", get_function("nlp_hess_l"));
+    g.setup_callback("p.fwd1_nlp_grad_l", get_function("fwd1_nlp_grad_l"));
     // Codegen path uses the runtime wrappers directly (no exception handling
     // -- the C++ shim is an LGPL-side luxury, not available in pure C).
     g << "p.obj_cb       = &casadi_uno_obj_wrapper;\n";
