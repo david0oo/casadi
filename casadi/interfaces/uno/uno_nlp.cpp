@@ -62,6 +62,13 @@ uno_int lagrangian_hessian_wrapper(uno_int n, uno_int ng, uno_int nnz,
       multipliers, hessian_values, user_data) != 0, "nlp_hess_l");
 }
 
+uno_int lagrangian_hessian_product_wrapper(uno_int n, uno_int ng, const double* x, 
+  bool evaluate_at_x, double objective_multiplier, const double* multipliers, const double* vector,
+    double* result, void* user_data) {
+  UNO_GUARD(casadi_uno_hess_prod_wrapper<double>(n, ng, x, evaluate_at_x, objective_multiplier,
+      multipliers, vector, result, user_data) != 0, "fwd1_nlp_grad_l");
+}
+
 void set_uno_option(void* solver, const std::string& name, const GenericType& value) {
   if (value.is_bool()) {
     uno_set_solver_bool_option(solver, name.c_str(), value.to_bool());

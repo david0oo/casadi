@@ -102,7 +102,6 @@ namespace casadi {
     // (uno_create_model copies them, so they could in principle be transient,
     // but holding onto them is cheap and matches the codegen path which
     // emits them as static const arrays).
-    std::vector<double> placeholder_lb_x_, placeholder_ub_x_;
     std::vector<double> placeholder_lb_g_, placeholder_ub_g_;
     // Solver-specific options forwarded to uno (the {"uno": {...}} dict).
     Dict opts_;

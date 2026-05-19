@@ -52,6 +52,7 @@ struct casadi_uno_prob {
   OracleCallback nlp_grad_f;
   OracleCallback nlp_jac_g;
   OracleCallback nlp_hess_l;
+  OracleCallback fwd1_nlp_grad_l;
   // Function pointers to register with Uno (kept on prob so the C++ vm path
   // can pass exception-aware shims and the codegen path can pass the bare
   // casadi_uno_*_wrapper symbols below).
@@ -60,6 +61,7 @@ struct casadi_uno_prob {
   uno_constraints_callback            constr_cb;
   uno_constraints_jacobian_callback   jac_cb;
   uno_lagrangian_hessian_callback     hess_cb;
+  uno_lagrangian_hessian_operator_callback hess_prod_cb;
 };
 // C-REPLACE "casadi_uno_prob<T1>" "struct casadi_uno_prob"
 
@@ -154,6 +156,29 @@ uno_int casadi_uno_hess_wrapper(uno_int n, uno_int ng, uno_int nnz,
 }
 // C-REPLACE "casadi_uno_hess_wrapper<T1>" "casadi_uno_hess_wrapper"
 
+// SYMBOL "uno_hess_prod_wrapper"
+template<typename T1>
+uno_int casadi_uno_hess_prod_wrapper(uno_int n, uno_int ng, const T1* x, 
+  bool evaluate_at_x, T1 obj_mult, const T1* mults, const T1* vec,
+    T1* vals, void* user_data) {
+  casadi_uno_data<T1>* d = static_cast< casadi_uno_data<T1>* >(user_data);
+  casadi_oracle_data<T1>* d_oracle = d->nlp.oracle;
+
+  d_oracle->arg[0] = x;           // x
+  d_oracle->arg[1] = d->nlp.p;      // p
+  d_oracle->arg[2] = &obj_mult;            // lam:f
+  d_oracle->arg[3] = mults;         // lam:g
+  d_oracle->arg[4] = nullptr;         // out:grad:gamma:x
+  d_oracle->arg[5] = vec;         // fwd:x
+  d_oracle->arg[6] = nullptr;         // fwd:p
+  d_oracle->arg[7] = nullptr;         // fwd:lam:x
+  d_oracle->arg[8] = nullptr;         // fwd:lam:g
+
+  d_oracle->res[0] = vals;         // fwd:grad:gamma:x
+  return calc_function(&d->prob->fwd1_nlp_grad_l, d_oracle) == 0 ? 0 : 1;
+}
+// C-REPLACE "casadi_uno_hess_prod_wrapper<T1>" "casadi_uno_hess_prod_wrapper"
+
 // Termination cb that always continues. Uno's C API impl checks ==0 for terminate.
 // SYMBOL "uno_term_cb"
 template<typename T1>
@@ -186,13 +211,12 @@ int casadi_uno_init_mem(casadi_uno_data<T1>* d) {
 // SYMBOL "uno_init_model"
 template<typename T1>
 void casadi_uno_init_model(casadi_uno_data<T1>* d,
-    const T1* lb_x, const T1* ub_x, const T1* lb_g, const T1* ub_g) {
+  const T1* lb_g, const T1* ub_g) {
   const casadi_uno_prob<T1>* p = d->prob;
   uno_int nx = p->nx;
   uno_int ng = p->ng;
 
-  d->model = uno_create_model(UNO_PROBLEM_NONLINEAR, nx,
-      lb_x, ub_x, UNO_ZERO_BASED_INDEXING);
+  d->model = uno_create_unconstrained_model(UNO_PROBLEM_NONLINEAR, nx, UNO_ZERO_BASED_INDEXING);
   uno_set_user_data(d->model, d);
   uno_set_objective(d->model, UNO_MINIMIZE, p->obj_cb, p->obj_grad_cb);
   if (ng > 0) {
@@ -202,6 +226,7 @@ void casadi_uno_init_model(casadi_uno_data<T1>* d,
   uno_set_lagrangian_hessian(d->model, p->n_hess, UNO_UPPER_TRIANGLE,
       p->hess_row, p->hess_col, p->hess_cb);
   uno_set_lagrangian_sign_convention(d->model, UNO_MULTIPLIER_POSITIVE);
+  uno_set_lagrangian_hessian_operator(d->model, p->hess_prod_cb);
 }
 
 // SYMBOL "uno_free_mem"
@@ -239,15 +264,13 @@ void casadi_uno_solve(casadi_uno_data<T1>* d) {
   if (!d->model) {
     // Codegen path: model wasn't built in init_mem (no p_nlp scope there);
     // build it now using the real bounds from this first call.
-    casadi_uno_init_model(d, d_nlp->lbz, d_nlp->ubz,
-        d_nlp->lbz + nx, d_nlp->ubz + nx);
-  } else {
-    uno_set_variables_lower_bounds(d->model, d_nlp->lbz);
-    uno_set_variables_upper_bounds(d->model, d_nlp->ubz);
-    if (ng > 0) {
-      uno_set_constraints_lower_bounds(d->model, d_nlp->lbz + nx);
-      uno_set_constraints_upper_bounds(d->model, d_nlp->ubz + nx);
-    }
+    casadi_uno_init_model(d, d_nlp->lbz + nx, d_nlp->ubz + nx);
+  } 
+  uno_set_variables_lower_bounds(d->model, d_nlp->lbz);
+  uno_set_variables_upper_bounds(d->model, d_nlp->ubz);
+  if (ng > 0) {
+    uno_set_constraints_lower_bounds(d->model, d_nlp->lbz + nx);
+    uno_set_constraints_upper_bounds(d->model, d_nlp->ubz + nx);
   }
   uno_set_initial_primal_iterate(d->model, d_nlp->x0);
 

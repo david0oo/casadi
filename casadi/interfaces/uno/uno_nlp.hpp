@@ -37,6 +37,9 @@ namespace UnoNlp {
   uno_int lagrangian_hessian_wrapper(uno_int n, uno_int ng, uno_int nnz,
       const double* x, double objective_multiplier, const double* multipliers,
       double* hessian_values, void* user_data);
+  uno_int lagrangian_hessian_product_wrapper(uno_int n, uno_int ng, const double* x, 
+  bool evaluate_at_x, double objective_multiplier, const double* multipliers, const double* vector,
+    double* result, void* user_data);
 
   void set_uno_option(void* solver, const std::string& name, const GenericType& value);
   void insert_casadi_options(void* solver, Dict opts);
