@@ -54,7 +54,7 @@ if "SKIP_SLEQP_TESTS" not in os.environ and has_nlpsol("sleqp"):
 
 if "SKIP_UNO_TESTS" not in os.environ and has_nlpsol("uno"):
   uno_codegen = {"std": "c99", "extralibs": ["uno"],"extra_include": ["uno"]}
-  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp"}},
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "ipopt", "primal_tolerance":1e-10, "dual_tolerance":1e-10}},
     {"codegen": uno_codegen, "discrete": False}))
 
 if "SKIP_ALPAQA_TESTS" not in os.environ and has_nlpsol("alpaqa"):
