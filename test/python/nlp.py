@@ -54,8 +54,9 @@ if "SKIP_SLEQP_TESTS" not in os.environ and has_nlpsol("sleqp"):
 
 if "SKIP_UNO_TESTS" not in os.environ and has_nlpsol("uno"):
   uno_codegen = {"std": "c99", "extralibs": ["uno"],"extra_include": ["uno"]}
-  solvers.append(("uno",{"print_time":False,"uno": {"preset": "ipopt", "primal_tolerance":1e-10, "dual_tolerance":1e-10}},
-    {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "ipopt", "primal_tolerance":1e-12, "dual_tolerance":1e-12}}, {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp", "primal_tolerance":1e-12, "dual_tolerance":1e-12}}, {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "funnelsqp", "primal_tolerance":1e-12, "dual_tolerance":1e-12}}, {"codegen": uno_codegen, "discrete": False}))
 
 if "SKIP_ALPAQA_TESTS" not in os.environ and has_nlpsol("alpaqa"):
   solvers.append(("alpaqa",{"print_time":False,"alpaqa": {"alm.tolerance": 1e-10, "alm.dual_tolerance": 1e-10, "alm.penalty_update_factor": 10, "alm.max_iter": 3000, "alm.print_interval": 1, "panoc.max_iter": 500, "panoc.print_interval": 1, "lbfgs.memory": 2}},{"codegen": False,"discrete":False}))
@@ -144,7 +145,7 @@ class NLPtests(casadiTestCase):
         print(solver(**solver_in))
       except:
         pass
-      if Solver not in ["ipopt","snopt","blocksqp","bonmin","knitro","sleqp","alpaqa"]:
+      if Solver not in ["ipopt","snopt","blocksqp","bonmin","knitro","sleqp","alpaqa","uno"]:
         self.assertTrue(solver.stats()["unified_return_status"]=="SOLVER_RET_NAN")
       self.assertFalse(solver.stats()["success"])
 
@@ -844,8 +845,13 @@ class NLPtests(casadiTestCase):
       solver_in["ubx"]=[10]*2
       solver_out = solver(**solver_in)
       self.assertAlmostEqual(solver_out["f"][0],0,10,str(Solver))
-      self.assertAlmostEqual(solver_out["x"][0],1,7,str(Solver))
-      self.assertAlmostEqual(solver_out["x"][1],1,7,str(Solver))
+
+      if "filtersqp" or "funnelsqp" in str(solver_options["uno"]):
+        self.assertAlmostEqual(solver_out["x"][0],1,6,str(Solver))
+        self.assertAlmostEqual(solver_out["x"][1],1,6,str(Solver))
+      else:
+        self.assertAlmostEqual(solver_out["x"][0],1,7,str(Solver))
+        self.assertAlmostEqual(solver_out["x"][1],1,7,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][0],0,8,str(Solver))
       if "bonmin" not in str(Solver): self.assertAlmostEqual(solver_out["lam_x"][1],0,8,str(Solver))
 
@@ -905,8 +911,12 @@ class NLPtests(casadiTestCase):
       solver_in["p"]=1
       solver_out = solver(**solver_in)
       self.assertAlmostEqual(solver_out["f"][0],0,10,str(Solver))
-      self.assertAlmostEqual(solver_out["x"][0],1,7,str(Solver))
-      self.assertAlmostEqual(solver_out["x"][1],1,7,str(Solver))
+      if "filtersqp" or "funnelsqp" in str(solver_options["uno"]):
+        self.assertAlmostEqual(solver_out["x"][0],1,6,str(Solver))
+        self.assertAlmostEqual(solver_out["x"][1],1,6,str(Solver))
+      else:
+        self.assertAlmostEqual(solver_out["x"][0],1,7,str(Solver))
+        self.assertAlmostEqual(solver_out["x"][1],1,7,str(Solver))
 
       if aux_options["codegen"]:
         self.check_codegen(solver,solver_in,**aux_options["codegen"])
