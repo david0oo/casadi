@@ -279,8 +279,9 @@ void casadi_uno_solve(casadi_uno_data<T1>* d) {
   uno_get_primal_solution(d->solver, d_nlp->z);
   uno_get_constraint_dual_solution(d->solver, d_nlp->lam + nx);
   for (i = 0; i < nx; ++i) {
+    // due to negative sign convention bound multipliers need to be added
     d_nlp->lam[i] = uno_get_lower_bound_dual_solution_component(d->solver, i)
-                  - uno_get_upper_bound_dual_solution_component(d->solver, i);
+                  + uno_get_upper_bound_dual_solution_component(d->solver, i);
   }
   d_nlp->objective         = uno_get_solution_objective(d->solver);
   d->primal_infeasibility  = uno_get_solution_primal_feasibility(d->solver);
