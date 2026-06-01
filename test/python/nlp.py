@@ -98,15 +98,50 @@ if "SKIP_KNITRO_TESTS" not in os.environ and has_nlpsol("knitro"):
 if "SKIP_SNOPT_TESTS" not in os.environ and has_nlpsol("snopt"):
   solvers.append(("snopt",{"snopt": {"Verify_level": 3,"Major_optimality_tolerance":1e-12,"Minor_feasibility_tolerance":1e-12,"Major_feasibility_tolerance":1e-12}},{"codegen": False,"discrete":False}))
 
+libmad_dir = os.environ.get("LIBMADDIR", "/missing")
+libmad_codegen = {"extralibs": ["Mad"], "std": "c99",
+                "extralibdirs": [os.path.join(libmad_dir, "lib")],
+                "extra_include": [os.path.join(libmad_dir, "include")]}
+
 if "SKIP_MADNLP_TESTS" not in os.environ and has_nlpsol("madnlp"):
-  codegen = {"std": "c99","extralibs": ["Mad"]}
-  solvers.append(("madnlp",{"madnlp": {}},{"codegen": codegen,"discrete":False}))
-
-
+  solvers.append(("madnlp",{"madnlp": {}},{"codegen": libmad_codegen,"discrete":False}))
 
 print(solvers)
 
 class NLPtests(casadiTestCase):
+
+  @requires_nlpsol("ccopt")
+  def test_ccopt(self):
+    x = SX.sym("x")
+    y = SX.sym("y")
+
+    f = (x-2)**2 + (y-2)**2
+    nlp = {"x": vertcat(x, y), "f": f}
+
+    solver_opts = {
+      "cc_pairs": [[0, 1]],
+      "madnlp": {"bound_relax_factor": 0.0},
+    }
+    solver = nlpsol("solver", "ccopt", nlp, solver_opts)
+
+    solver_in = {
+      "x0": [2.5, 3.0],
+      "lbx": [0.0, 0.0],
+    }
+    solver_out = solver(**solver_in)
+
+    self.assertTrue(solver.stats()["success"])
+    self.assertAlmostEqual(float(solver_out["f"]), 4.0, 6)
+    x_sol = float(solver_out["x"][0])
+    y_sol = float(solver_out["x"][1])
+    self.assertAlmostEqual(min(x_sol, y_sol), 0.0, 6)
+    self.assertAlmostEqual(max(x_sol, y_sol), 2.0, 6)
+
+    aux_codegen = {"extralibs": ["Mad"], "std": "c99",
+                   "extralibdirs": [os.path.join(os.environ.get("LIBMADDIR", "/missing"), "lib")],
+                   "extra_include": [os.path.join(os.environ.get("LIBMADDIR", "/missing"), "include")]}
+    self.check_codegen(solver, solver_in, **aux_codegen)
+    self.check_serialize(solver, solver_in)
 
   @requires_nlpsol("alpaqa")
   def test_alpaqa(self):
@@ -312,7 +347,7 @@ class NLPtests(casadiTestCase):
       print("test_wrongdims",Solver,solver_options)
       with self.assertInException("dense vector"):
         solver = nlpsol("mysolver", Solver, nlp, solver_options)
-    nlp={'x':x, 'f':-x[0],'g':mtimes(x,x.T)}
+    nlp={'x':x, 'f':-x[0],'g':x @ x.T}
 
     for Solver, solver_options, aux_options in solvers:
       print("test_wrongdims",Solver,solver_options)
@@ -338,7 +373,7 @@ class NLPtests(casadiTestCase):
       solver = nlpsol("mysolver", Solver, nlp, solver_options)
 
     x = vec(diag(SX.sym("x",2)))
-    nlp={'x':x, 'f':mtimes(x.T,x),'g':x[0]}
+    nlp={'x':x, 'f':x.T @ x,'g':x[0]}
     for Solver, solver_options, aux_options in solvers:
       print("test_wrongdims",Solver,solver_options)
       with self.assertInException("dense vector"):
@@ -1278,7 +1313,7 @@ class NLPtests(casadiTestCase):
     UBX = DM([0.5,inf])
 
     x=SX.sym("x",2)
-    nlp={'x':x, 'f':0.5*mtimes([x.T,H,x])+mtimes(G.T,x), 'g':mtimes(A,x)}
+    nlp={'x':x, 'f':0.5*mtimes([x.T,H,x])+G.T @ x, 'g':A @ x}
 
     for Solver, solver_options, aux_options in solvers:
       print("test_QP2",Solver,solver_options)
@@ -1345,7 +1380,7 @@ class NLPtests(casadiTestCase):
     UBX = DM([inf]*2)
 
     x=SX.sym("x",2)
-    nlp={'x':x, 'f':0.5*mtimes([x.T,H,x])+mtimes(G.T,x), 'g':mtimes(A,x)}
+    nlp={'x':x, 'f':0.5*mtimes([x.T,H,x])+G.T @ x, 'g':A @ x}
 
     for Solver, solver_options, aux_options in solvers:
       print("test_QP2_unconvex",Solver,solver_options)
@@ -1804,7 +1839,7 @@ class NLPtests(casadiTestCase):
     p = SX.sym("x",0,1)
     lam_f = SX.sym("x")
     lam_g = SX.sym("x",0,1)
-    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*triu(mtimes(J.T,J))])
+    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*triu(J.T @ J)])
     options = {"hess_lag": GN}
     nlp = {"x":x,"f":f}
     with self.assertInException("Hessian must be symmetric"):
@@ -1820,7 +1855,7 @@ class NLPtests(casadiTestCase):
     self.assertTrue(np.any(np.linalg.eig(H)[0]<0))
 
     # Solve with Gauss-Newton -> 6 iterations
-    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*mtimes(J.T,J)])
+    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*(J.T @ J)])
     options = {"convexify_strategy":"regularize","qpsol":"qrqp","hess_lag": GN}
     nlp = {"x":x,"f":f}
     solver = nlpsol("solver","sqpmethod",nlp,options)
@@ -1846,7 +1881,7 @@ class NLPtests(casadiTestCase):
     p = SX.sym("x",0,1)
     lam_f = SX.sym("x")
     lam_g = SX.sym("x",0,1)
-    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*mtimes(J.T,J)])
+    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*(J.T @ J)])
     options = {"hess_lag": GN}
     nlp = {"x":x,"f":f}
     with self.assertInException("Hessian must be upper triangular"):
@@ -1862,7 +1897,7 @@ class NLPtests(casadiTestCase):
     self.assertTrue(np.any(np.linalg.eig(H)[0]<0))
 
     # Solve with Gauss-Newton -> 6 iterations
-    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*triu(mtimes(J.T,J))])
+    GN = Function('GN',[x,p,lam_f,lam_g],[lam_f*triu(J.T @ J)])
     options = {"hess_lag": GN}
     nlp = {"x":x,"f":f}
     solver = nlpsol("solver","ipopt",nlp,options)
@@ -1926,7 +1961,7 @@ class NLPtests(casadiTestCase):
 
       res = solver(x0=x0)
 
-      self.checkarray(x0-np.linalg.solve(Hcvx,mtimes(H,x0)),res["x"])
+      self.checkarray(x0-np.linalg.solve(np.array(Hcvx),np.array(H @ x0)),res["x"])
 
       self.check_serialize(solver,{"x0":x0})
 

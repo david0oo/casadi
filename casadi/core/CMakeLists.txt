@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10.2)
+cmake_minimum_required(VERSION 3.16.3)
 
 # Create runtime
 add_subdirectory(runtime)
@@ -182,6 +182,7 @@ set(CASADI_INTERNAL
   monitor.hpp             monitor.cpp             # Monitor
   dump.hpp                dump.cpp                # Dump
   repmat.hpp              repmat.cpp              # RepMat
+  kron.hpp                kron.cpp                # Kronecker product
   convexify.hpp           convexify.cpp           # Convexify
   logsumexp.hpp           logsumexp.cpp           # Logsumexp
 

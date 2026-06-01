@@ -498,7 +498,6 @@ namespace std {
   }
 }
 
-#ifdef WITH_PYTHON3
 // See https://github.com/casadi/casadi/issues/701
 // Recent numpys will only catch TypeError or ValueError in printing logic
 %exception __bool__ {
@@ -508,15 +507,6 @@ namespace std {
    SWIG_exception(SWIG_TypeError, e.what());
   }
 }
-#else
-%exception __nonzero__ {
- try {
-    $action
-  } catch (const std::exception& e) {
-   SWIG_exception(SWIG_TypeError, e.what());
-  }
-}
-#endif
 #else
 // Exceptions handling
 %include "exception.i"
@@ -542,7 +532,6 @@ namespace std {
   }
 }
 
-#ifdef WITH_PYTHON3
 // See https://github.com/casadi/casadi/issues/701
 // Recent numpys will only catch TypeError or ValueError in printing logic
 %exception __bool__ {
@@ -554,18 +543,6 @@ namespace std {
     SWIG_exception(SWIG_TypeError, e.getMessage());
   }
 }
-#else
-%exception __nonzero__ {
- try {
-    $action
-  } catch (const std::exception& e) {
-   SWIG_exception(SWIG_TypeError, e.what());
-  }
-  catch (const Swig::DirectorException& e) {
-    SWIG_exception(SWIG_TypeError, e.getMessage());
-  }
-}
-#endif
 #endif
 
 #ifdef SWIGPYTHON
@@ -782,7 +759,11 @@ namespace std {
       PyObject *cr = PyObject_CallFunctionObjArgs(dm, p, check_only, NULL);
       if (!cr) return false;
       bool ret;
-      if (PyBool_Check(cr)) {
+      // None signals "not handled by this helper" (issue #4216):
+      // without this check, conv() would dereference None and segfault.
+      if (cr == Py_None) {
+        ret = false;
+      } else if (PyBool_Check(cr)) {
         ret = PyObject_IsTrue(cr);
       } else {
         ret = conv(cr, m);
@@ -1036,14 +1017,7 @@ namespace std {
 
     GUESTOBJECT * from_ptr(const casadi_int *a) {
 #ifdef SWIGPYTHON
-#ifdef WITH_PYTHON3
       return PyLong_FromLongLong(*a);
-#else
-      // For python on Windows
-      if (*a > PyInt_GetMax() || *a < -(PyInt_GetMax()-1)) return PyLong_FromLongLong(*a);
-      return PyInt_FromLong(*a);
-#endif
-
 #elif defined(SWIGMATLAB)
       return mxCreateDoubleScalar(static_cast<double>(*a));
 #else
@@ -1692,15 +1666,32 @@ namespace std {
         }
         return true;
       }
-      // Python slice
+      // Python slice - use Limited API compatible approach
       if (PySlice_Check(p)) {
-        PySliceObject *r = (PySliceObject*)(p);
+        Py_ssize_t start, stop, step;
+%#if PY_VERSION_HEX >= 0x03060100
+        int res = PySlice_Unpack(p, &start, &stop, &step);
+%#else
+        // Python 2.7 and early Python 3.x use _PySlice_Unpack (private API)
+        int res = _PySlice_Unpack(p, &start, &stop, &step);
+%#endif
+        if (res < 0) {
+          return false;  // TypeError already set by PySlice_Unpack
+        }
+
         if (m) {
-          (**m).start = (r->start == Py_None || PyNumber_AsSsize_t(r->start, NULL) <= std::numeric_limits<int>::min())
-            ? std::numeric_limits<casadi_int>::min() : PyInt_AsLong(r->start);
-          (**m).stop  = (r->stop ==Py_None || PyNumber_AsSsize_t(r->stop, NULL)>= std::numeric_limits<int>::max())
-            ? std::numeric_limits<casadi_int>::max() : PyInt_AsLong(r->stop);
-          if(r->step !=Py_None) (**m).step  = PyInt_AsLong(r->step);
+          // Map sentinel values from PySlice_Unpack to CasADi's limits
+          // PySlice_Unpack returns PY_SSIZE_T_MIN or PY_SSIZE_T_MAX as sentinels
+          // depending on step direction, so check both extremes
+          (**m).start = (start == PY_SSIZE_T_MIN || start == PY_SSIZE_T_MAX)
+              ? std::numeric_limits<casadi_int>::min()
+              : static_cast<casadi_int>(start);
+          (**m).stop = (stop == PY_SSIZE_T_MAX || stop == PY_SSIZE_T_MIN)
+              ? std::numeric_limits<casadi_int>::max()
+              : static_cast<casadi_int>(stop);
+          if (step != 1) {
+            (**m).step = static_cast<casadi_int>(step);
+          }
         }
         return true;
       }
@@ -2396,19 +2387,26 @@ namespace std {
 #endif
 
 #ifdef SWIGPYTHON
-%typemap(in, doc="memoryview(ro)", pystub_in="memoryview", noblock=1, fragment="casadi_all") (const double * a, casadi_int size) (Py_buffer* buffer) {
-  if (!PyMemoryView_Check($input)) SWIG_exception_fail(SWIG_TypeError, "Must supply a MemoryView.");
-  buffer = PyMemoryView_GET_BUFFER($input);
-  $1 = static_cast<double*>(buffer->buf); // const double cast comes later
-  $2 = buffer->len;
+%typemap(in, doc="buffer(ro)", pystub_in="memoryview", noblock=1, fragment="casadi_all") (const double * a, casadi_int size) (Py_buffer _global_pybuf_ro) {
+  if (PyObject_GetBuffer($input, &_global_pybuf_ro, PyBUF_SIMPLE) != 0) {
+    SWIG_exception_fail(SWIG_TypeError, "Must supply a buffer-supporting object.");
+  }
+  $1 = static_cast<double*>(_global_pybuf_ro.buf);
+  $2 = _global_pybuf_ro.len;
+ }
+%typemap(freearg) (const double * a, casadi_int size) {
+  PyBuffer_Release(&_global_pybuf_ro);
  }
 
-%typemap(in, doc="memoryview(rw)", pystub_in="memoryview", noblock=1, fragment="casadi_all") (double * a, casadi_int size)  (Py_buffer* buffer) {
-  if (!PyMemoryView_Check($input)) SWIG_exception_fail(SWIG_TypeError, "Must supply a writable MemoryView.");
-  buffer = PyMemoryView_GET_BUFFER($input);
-  if (buffer->readonly) SWIG_exception_fail(SWIG_TypeError, "Must supply a writable MemoryView.");
-  $1 = static_cast<double*>(buffer->buf);
-  $2 = buffer->len;
+%typemap(in, doc="buffer(rw)", pystub_in="memoryview", noblock=1, fragment="casadi_all") (double * a, casadi_int size)  (Py_buffer _global_pybuf_rw) {
+  if (PyObject_GetBuffer($input, &_global_pybuf_rw, PyBUF_WRITABLE) != 0) {
+    SWIG_exception_fail(SWIG_TypeError, "Must supply a writable buffer-supporting object.");
+  }
+  $1 = static_cast<double*>(_global_pybuf_rw.buf);
+  $2 = _global_pybuf_rw.len;
+ }
+%typemap(freearg) (double * a, casadi_int size) {
+  PyBuffer_Release(&_global_pybuf_rw);
  }
 
 // Directorin typemap; as output
@@ -2416,11 +2414,7 @@ namespace std {
   PyObject * arg_tuple = PyTuple_New($2.size());
   for (casadi_int i=0;i<$2.size();++i) {
 
-#ifdef WITH_PYTHON3
     PyObject* buf = $1[i] ? PyMemoryView_FromMemory(reinterpret_cast<char*>(const_cast<double*>($1[i])), $2[i]*sizeof(double), PyBUF_READ) : SWIG_Py_Void();
-#else
-    PyObject* buf = $1[i] ? PyBuffer_FromMemory(const_cast<double*>($1[i]), $2[i]*sizeof(double)) : SWIG_Py_Void();
-#endif
     PyTuple_SET_ITEM(arg_tuple, i, buf);
   }
   $input = arg_tuple;
@@ -2429,11 +2423,7 @@ namespace std {
 %typemap(directorin, noblock=1, fragment="casadi_all") (double** res, const std::vector<casadi_int>& sizes_res) {
   PyObject* res_tuple = PyTuple_New($2.size());
   for (casadi_int i=0;i<$2.size();++i) {
-#ifdef WITH_PYTHON3
     PyObject* buf = $1[i] ? PyMemoryView_FromMemory(reinterpret_cast<char*>(const_cast<double*>($1[i])), $2[i]*sizeof(double), PyBUF_WRITE) : SWIG_Py_Void();
-#else
-    PyObject* buf = $1[i] ? PyBuffer_FromReadWriteMemory($1[i], $2[i]*sizeof(double)) : SWIG_Py_Void();
-#endif
     PyTuple_SET_ITEM(res_tuple, i, buf);
   }
   $input = res_tuple;
@@ -2696,20 +2686,7 @@ PyOS_setsig(SIGINT, SigIntHandler);
 %}
 #endif // WITH_PYTHON_INTERRUPTS
 
-%pythoncode%{
-try:
-  from numpy import pi, inf, sum
-except:
-  pass
-
-arcsin = lambda x: _casadi.asin(x)
-arccos = lambda x: _casadi.acos(x)
-arctan = lambda x: _casadi.atan(x)
-arctan2 = lambda x,y: _casadi.atan2(x, y)
-arctanh = lambda x: _casadi.atanh(x)
-arcsinh = lambda x: _casadi.asinh(x)
-arccosh = lambda x: _casadi.acosh(x)
-%}
+%pythoncode "numpy_bridge.py"
 
 /* `inf` and `pi` exist at runtime (casadi/core const doubles) but are
  * deliberately NOT declared in the stub.  numpy declares both as
@@ -2916,13 +2893,7 @@ if (!$1) {
 
 #ifdef SWIGPYTHON
 %ignore casadi_mod;
-#endif // SWIGPYTHON
-
-#ifdef WITH_PYTHON3
 %rename(__bool__) __nonzero__;
-#endif
-
-#ifdef SWIGPYTHON
 
 %pythoncode %{
 class NZproxy:
@@ -3014,99 +2985,30 @@ class NZproxy:
 
   __array_priority__ = arraypriority
 
-  def __array_wrap__(self,out_arr,context=None):
-    if context is None:
-      return out_arr
-    name = context[0].__name__
-    args = list(context[1])
-
-    if len(context[1])==3:
-      raise Exception("Error with %s. Looks like you are using an assignment operator, such as 'a+=b' where 'a' is a numpy type. This is not supported, and cannot be supported without changing numpy." % name)
-
-    if "vectorized" in name:
-        name = name[:-len(" (vectorized)")]
-
-    conversion = {"multiply": "mul", "divide": "div", "true_divide": "div", "subtract":"sub","power":"pow","greater_equal":"ge","less_equal": "le", "less": "lt", "greater": "gt", "equal": "eq", "not_equal": "ne"}
-    if name in conversion:
-      name = conversion[name]
-    if len(context[1])==2 and context[1][1] is self and not(context[1][0] is self):
-      name = 'r' + name
-      args.reverse()
-    if not(hasattr(self,name)) or ('mul' in name):
-      name = '__' + name + '__'
-    fun=getattr(self, name)
-    return fun(*args[1:])
-
   def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-    conversion = {"multiply": "mul", "divide": "div", "true_divide": "div", "subtract":"sub","power":"pow","greater_equal":"ge","less_equal": "le", "less": "lt", "greater": "gt", "equal": "eq", "not_equal": "ne"}
-    name = ufunc.__name__
-    inputs = list(inputs)
-    if len(inputs)==3:
-      import warnings
-      warnings.warn("Error with %s. Looks like you are using an assignment operator, such as 'a+=b' where 'a' is a numpy type. This is not supported, and cannot be supported without changing numpy." % name, RuntimeWarning)
-      return NotImplemented
-    if "vectorized" in name:
-        name = name[:-len(" (vectorized)")]
-    if name in conversion:
-      name = conversion[name]
-    if len(inputs)==2 and inputs[1] is self and not(inputs[0] is self):
-      name = 'r' + name
-      inputs.reverse()
-    if not(hasattr(self,name)) or ('mul' in name):
-      name = '__' + name + '__'
-    if method=="reduce" and name=="add":
-      assert len(inputs)==1
-      axis = kwargs["axis"]
-      if axis is None:
-          return inputs[0].sum()
-      else:
-          return inputs[0].sum(axis)
-    try:
-      assert method=="__call__"
-      fun=getattr(self, name)
-      return fun(*inputs[1:])
-    except Exception as e:
-      if "Dimension mismatch" in str(e):
-        import sys
-        if sys.version_info[0] < 3:
-            raise RuntimeError(str(e))
-        else:
-            raise e
-      # Fall back to numpy conversion
-      new_inputs = list(inputs)
+      return _numpy_ufunc_dispatch(self, ufunc, method, inputs, kwargs)
+
+  def __array_function__(self, func, types, args, kwargs):
+      return _numpy_array_function_dispatch(self, func, types, args, kwargs)
+
+  def __array__(self, *args, **kwargs):
+      import numpy as _n
       try:
-        new_inputs[0] = new_inputs[0].full()
-      except:
-        import warnings
-        warnings.warn("Implicit conversion of symbolic CasADi type to numeric matrix not supported.\n"
-                               + "This may occur when you pass a CasADi object to a numpy function.\n"
-                               + "Use an equivalent CasADi function instead of that numpy function.", RuntimeWarning)
-        return NotImplemented
-      return new_inputs[0].__array_ufunc__(ufunc, method, *new_inputs, **kwargs)
-
-
-  def __array__(self,*args,**kwargs):
-    import numpy as n
-    if len(args) > 1 and isinstance(args[1],tuple) and isinstance(args[1][0],n.ufunc) and isinstance(args[1][0],n.ufunc) and len(args[1])>1 and args[1][0].nin==len(args[1][1]):
-      if len(args[1][1])==3:
-        raise Exception("Error with %s. Looks like you are using an assignment operator, such as 'a+=b'. This is not supported when 'a' is a numpy type, and cannot be supported without changing numpy itself. Either upgrade a to a CasADi type first, or use 'a = a + b'. " % args[1][0].__name__)
-      return n.array([n.nan])
-    else:
-      if hasattr(self,'__array_custom__'):
-        return self.__array_custom__(*args,**kwargs)
-      else:
-        try:
-          return self.full()
-        except:
+          arr = self.full()
+      except Exception:
           if self.is_scalar(True):
-            # Needed for #2743
-            E=n.empty((),dtype=object)
-            E[()] = self
-            return E
-          else:
-            raise Exception("Implicit conversion of symbolic CasADi type to numeric matrix not supported.\n"
-                      + "This may occur when you pass a CasADi object to a numpy function.\n"
-                      + "Use an equivalent CasADi function instead of that numpy function.")
+              # Box symbolic scalars in an object array (#2743).
+              E = _n.empty((), dtype=object)
+              E[()] = self
+              return E
+          raise TypeError(
+              "Implicit conversion of symbolic CasADi type to numeric matrix not supported.\n"
+              "This may occur when you pass a CasADi object to a numpy function.\n"
+              "Use an equivalent CasADi function instead of that numpy function.")
+      dtype = kwargs.get("dtype")
+      if dtype is not None and dtype is not _n.double:
+          return _n.array(arr, dtype=dtype)
+      return arr
 
 %}
 /* __array__ makes DM / SX / MX acceptable where numpy / scipy expect
@@ -4197,6 +4099,9 @@ DECL M casadi_no_hess(const M& expr) {
 DECL M casadi_no_grad(const M& expr) {
   return no_grad(expr);
 }
+DECL M casadi_kron_contract(const M& m, const M& x, bool inner) {
+  return kron_contract(m, x, inner);
+}
 
 #endif
 %enddef
@@ -4256,20 +4161,6 @@ namespace casadi{
 
 %python_array_wrappers(999.0)
 
-// The following code has some trickery to fool numpy ufunc.
-// Normally, because of the presence of __array__, an ufunctor like nump.sqrt
-// will unleash its activity on the output of __array__
-// However, we wish DM to remain a DM
-// So when we receive a call from a functor, we return a dummy empty array
-// and return the real result during the postprocessing (__array_wrap__) of the functor.
-%pythoncode %{
-  def __array_custom__(self,*args,**kwargs):
-    if "dtype" in kwargs and not(isinstance(kwargs["dtype"],n.double)):
-      return n.array(self.full(),dtype=kwargs["dtype"])
-    else:
-      return self.full()
-%}
-
 %pythoncode %{
   def tocsc(self):
     import numpy as np
@@ -4286,10 +4177,21 @@ namespace casadi{
       elif self.is_vector():
         return np.array(self.T.elements())
     return np.array(self.T.elements()).reshape(self.shape)
+  def to_numpy(self):
+    # Pandas-style densification hook.  matplotlib's
+    # cbook._unpack_to_numpy looks for `to_numpy()` before falling back
+    # to iteration, so defining it here makes plt.plot(DM) work without
+    # forcing densification through NEP-18 shape ops like np.atleast_1d.
+    return self.full()
 %}
+/* `tocsc` returns a scipy.sparse.csc_matrix; not type-importing scipy.sparse
+ * here keeps the stub independent of an optional dependency.  `Any` is the
+ * least-bad option until we also bridge scipy.sparse types. */
+%stub_method0(tocsc,    Any)
+%stub_method(toarray,   %arg(NDArray[np.float64] | float), simplify: bool = ...)
+%stub_method0(to_numpy, %arg(NDArray[np.float64]))
 
 
-#ifdef WITH_PYTHON3
 %pythoncode %{
   def __bool__(self):
     if self.numel()!=1:
@@ -4297,21 +4199,6 @@ namespace casadi{
     if self.nnz()==0:
       return False
     return float(self)!=0
-%}
-#else
-%pythoncode %{
-  def __nonzero__(self):
-    if self.numel()!=1:
-      raise Exception("Only a scalar can be cast to a float")
-    if self.nnz()==0:
-      return False
-    return float(self)!=0
-%}
-#endif
-
-%pythoncode %{
-  def __abs__(self):
-    return abs(float(self))
 %}
 
 }; // extend Matrix<double>
@@ -4844,7 +4731,6 @@ namespace casadi {
 
 // Wrap the casadi_ prefixed functions in member functions
 #ifdef SWIGPYTHON
-#ifdef WITH_PYTHON3
 namespace casadi {
   %extend GenericExpressionCommon {
     %pythoncode %{
@@ -4853,15 +4739,28 @@ namespace casadi {
           return self.element_hash()
         except:
           return SharedObject.__hash__(self)
-      def __matmul__(x, y): return _casadi.mtimes(x, y)
-      def __rmatmul__(x, y): return _casadi.mtimes(y, x)
+      def __matmul__(x, y):
+        try:
+          return _casadi.mtimes(x, y)
+        except NotImplementedError:
+          return NotImplemented
+      def __rmatmul__(x, y):
+        try:
+          return _casadi.mtimes(y, x)
+        except NotImplementedError:
+          return NotImplemented
+      def __imatmul__(x, y):
+        try:
+          return _casadi.mtimes(x, y)
+        except NotImplementedError:
+          return NotImplemented
     %}
     %stub_method0(__hash__, int)
     %stub_CasadiMatrix_binop(__matmul__)
     %stub_CasadiMatrix_binop(__rmatmul__)
+    %stub_CasadiMatrix_binop(__imatmul__)
   }
 }
-#endif
 namespace casadi {
   %extend GenericExpressionCommon {
     %pythoncode %{
@@ -4871,10 +4770,20 @@ namespace casadi {
       def __rsub__(x, y): return _casadi.minus(y, x)
       def __mul__(x, y): return _casadi.times(x, y)
       def __rmul__(x, y): return _casadi.times(y, x)
-      def __div__(x, y): return _casadi.rdivide(x, y)
-      def __rdiv__(x, y): return _casadi.rdivide(y, x)
       def __truediv__(x, y): return _casadi.rdivide(x, y)
       def __rtruediv__(x, y): return _casadi.rdivide(y, x)
+      def __floordiv__(x, y): return _casadi.floor(_casadi.rdivide(x, y))
+      def __rfloordiv__(x, y): return _casadi.floor(_casadi.rdivide(y, x))
+      def __mod__(x, y):
+        return x - y * _casadi.floor(_casadi.rdivide(x, y))
+      def __rmod__(x, y):
+        return y - x * _casadi.floor(_casadi.rdivide(y, x))
+      def __divmod__(x, y):
+        q = _casadi.floor(_casadi.rdivide(x, y))
+        return (q, x - y * q)
+      def __rdivmod__(x, y):
+        q = _casadi.floor(_casadi.rdivide(y, x))
+        return (q, y - x * q)
       def __lt__(x, y): return _casadi.lt(x, y)
       def __rlt__(x, y): return _casadi.lt(y, x)
       def __le__(x, y): return _casadi.le(x, y)
@@ -4883,12 +4792,52 @@ namespace casadi {
       def __rgt__(x, y): return _casadi.lt(x, y)
       def __ge__(x, y): return _casadi.le(y, x)
       def __rge__(x, y): return _casadi.le(x, y)
-      def __eq__(x, y): return _casadi.eq(x, y)
-      def __req__(x, y): return _casadi.eq(y, x)
-      def __ne__(x, y): return _casadi.ne(x, y)
-      def __rne__(x, y): return _casadi.ne(y, x)
-      def __pow__(x, n): return _casadi.power(x, n)
+      def __eq__(x, y):
+        r = _casadi.eq(x, y)
+        if r is NotImplemented and isinstance(x, SX) and isinstance(y, MX):
+          raise Exception("Cannot compare SX and MX objects for equality")
+        return r
+      def __ne__(x, y):
+        r = _casadi.ne(x, y)
+        if r is NotImplemented and isinstance(x, SX) and isinstance(y, MX):
+          raise Exception("Cannot compare SX and MX objects for inequality")
+        return r
+      def __req__(x, y):
+        r = _casadi.eq(y, x)
+        if r is NotImplemented and isinstance(x, SX) and isinstance(y, MX):
+          raise Exception("Cannot compare SX and MX objects for equality")
+        return r
+      def __rne__(x, y):
+        r = _casadi.ne(y, x)
+        if r is NotImplemented and isinstance(x, SX) and isinstance(y, MX):
+          raise Exception("Cannot compare SX and MX objects for inequality")
+        return r
+      def __pow__(x, n, modulo=None):
+        p = _casadi.power(x, n)
+        if modulo is None:
+          return p
+        return p - modulo * _casadi.floor(_casadi.rdivide(p, modulo))
       def __rpow__(n, x): return _casadi.power(x, n)
+      def __round__(x, ndigits=None):
+        if ndigits is None:
+          return _casadi.if_else(x >= 0, _casadi.floor(x + 0.5),
+                                 _casadi.ceil(x - 0.5))
+        s = 10.0 ** ndigits
+        y = x * s
+        return _casadi.if_else(y >= 0, _casadi.floor(y + 0.5),
+                               _casadi.ceil(y - 0.5)) / s
+      def __trunc__(x):
+        return _casadi.if_else(x >= 0, _casadi.floor(x), _casadi.ceil(x))
+      def __floor__(x): return _casadi.floor(x)
+      def __ceil__(x):  return _casadi.ceil(x)
+      def __abs__(x):   return _casadi.fabs(x)
+      def __iadd__(x, y):      return _casadi.plus(x, y)
+      def __isub__(x, y):      return _casadi.minus(x, y)
+      def __imul__(x, y):      return _casadi.times(x, y)
+      def __itruediv__(x, y):  return _casadi.rdivide(x, y)
+      def __ifloordiv__(x, y): return _casadi.floor(_casadi.rdivide(x, y))
+      def __imod__(x, y):      return x - y * _casadi.floor(_casadi.rdivide(x, y))
+      def __ipow__(x, n):      return _casadi.power(x, n)
       def __arctan2__(x, y): return _casadi.atan2(x, y)
       def __rarctan2__(y, x): return _casadi.atan2(x, y)
       def fmin(x, y): return _casadi.fmin(x, y)
@@ -4943,11 +4892,25 @@ namespace casadi {
     %stub_CasadiMatrix_binop(__rmul__)
     %stub_CasadiMatrix_binop(__truediv__)
     %stub_CasadiMatrix_binop(__rtruediv__)
+    %stub_CasadiMatrix_binop(__floordiv__)
+    %stub_CasadiMatrix_binop(__rfloordiv__)
+    %stub_CasadiMatrix_binop(__mod__)
+    %stub_CasadiMatrix_binop(__rmod__)
     %stub_CasadiMatrix_binop(__pow__)
     %stub_CasadiMatrix_binop(__rpow__)
+    %stub_CasadiMatrix_binop(__iadd__)
+    %stub_CasadiMatrix_binop(__isub__)
+    %stub_CasadiMatrix_binop(__imul__)
+    %stub_CasadiMatrix_binop(__itruediv__)
+    %stub_CasadiMatrix_binop(__ifloordiv__)
+    %stub_CasadiMatrix_binop(__imod__)
+    %stub_CasadiMatrix_binop(__ipow__)
     %stub_CasadiMatrix_unop(__neg__)
     %stub_CasadiMatrix_unop(__pos__)
     %stub_CasadiMatrix_unop(__abs__)
+    %stub_CasadiMatrix_unop(__trunc__)
+    %stub_CasadiMatrix_unop(__floor__)
+    %stub_CasadiMatrix_unop(__ceil__)
     %stub_CasadiMatrix_cmp(__lt__)
     %stub_CasadiMatrix_cmp(__le__)
     %stub_CasadiMatrix_cmp(__gt__)
@@ -5093,8 +5056,21 @@ class global_unpickle_context:
         return self.ctx
 
     def __exit__(self, *args):
-        _thread_local.casadi_unpickle_ctx = None  
+        _thread_local.casadi_unpickle_ctx = None
 %}
+
+/* Pure-pythoncode classes -- SWIG doesn't see them, so the .pyi has to
+ * be hand-rolled.  Both are referenced from error messages
+ * (`Use ca.global_pickle_context(): ...`) and from test/python/serialize.py. */
+%stub_class_begin(global_pickle_context)
+%stub_method0(__enter__, StringSerializer)
+%stub_method(__exit__, None, *args: Any)
+
+%stub_class_begin(global_unpickle_context)
+%stub_method0(__enter__, StringDeserializer)
+%stub_method(__exit__, None, *args: Any)
+
+
 #endif // SWIGPYTHON
 #ifdef SWIGMATLAB
 %extend casadi::DeserializerBase {

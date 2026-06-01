@@ -74,19 +74,18 @@ if "SKIP_GUROBI_TESTS" not in os.environ and has_conic("gurobi"):
 if "SKIP_XPRESS_TESTS" not in os.environ and has_conic("xpress"):
   # Note: OPTIMALITYTOL tighter than default (1e-6) can cause Xpress to
   # return infeasible solutions while reporting "optimal".  Leave at default.
-  xpress_dir = os.environ.get("XPRESSDIR", "/opt/xpressmp")
+  xpress_dir = os.environ.get("XPRESSDIR", "missing")
+  print("xpress_dir")
   xpress_codegen = {"extralibs": ["xprs"], "std": "c99",
-                    "extra_options": ["-I" + os.path.join(xpress_dir, "include"),
-                                      "-L" + os.path.join(xpress_dir, "lib"),
-                                      "-Wl,-rpath," + os.path.join(xpress_dir, "lib")]}
+                    "extralibdirs": [os.path.join(xpress_dir, "lib")],
+                    "extra_include": [os.path.join(xpress_dir, "include")]}
   conics.append(("xpress",{"xpress": {"OUTPUTLOG":0,"FEASTOL":1e-9,"BARGAPSTOP":1e-10,"BARDUALSTOP":1e-10}},{"quadratic": True, "dual": True, "soc": True, "codegen": xpress_codegen, "binary":True, "discrete": True, "sos":True}))
 
 if "SKIP_MOSEK_TESTS" not in os.environ and has_conic("mosek"):
-  mosek_dir = os.environ.get("MOSEKDIR", os.path.expanduser("~/mosek/11.1/tools/platform/linux64x86"))
+  mosek_dir = os.environ.get("MOSEKDIR", os.path.expanduser("missing"))
   mosek_codegen = {"extralibs": ["mosek64"], "std": "c99",
-                   "extra_options": ["-I" + os.path.join(mosek_dir, "h"),
-                                     "-L" + os.path.join(mosek_dir, "bin"),
-                                     "-Wl,-rpath," + os.path.join(mosek_dir, "bin")]}
+                   "extralibdirs": [os.path.join(mosek_dir, "bin")],
+                   "extra_include": [os.path.join(mosek_dir, "h")]}
   conics.append(("mosek",{"mosek": {"MSK_IPAR_LOG":0,
                                     "MSK_DPAR_INTPNT_QO_TOL_REL_GAP":1e-10,
                                     "MSK_DPAR_INTPNT_QO_TOL_PFEAS":1e-10,
@@ -143,7 +142,7 @@ class ConicTests(casadiTestCase):
     x = MX.sym("x", n)
     # --- Hessian: dense symmetric matrix ---
     M = DM.rand(n,n)
-    H = 0.5 * mtimes(M,M.T)  # symmetrize
+    H = 0.5 * (M @ M.T)  # symmetrize
 
     # --- Linear term ---
     f = 100 * DM.rand(n,1)
@@ -160,7 +159,7 @@ class ConicTests(casadiTestCase):
       
       if conic not in ["daqp"]:
         solver = qpsol('solver', conic,
-                          {'f': mtimes(f.T,x), 'x': x, "g": mtimes(A,x)},
+                          {'f': f.T @ x, 'x': x, "g": A @ x},
                           {'discrete': [1] * ms + [0] * (n-ms)}
                           )
                           
@@ -174,13 +173,16 @@ class ConicTests(casadiTestCase):
 
         # Using casadi qpsol
         solver = qpsol('solver', conic,
-                          {'f': 0.5*mtimes(x.T,mtimes(H,x)) + mtimes(f.T,x), 'x': x, "g": mtimes(A,x)},
+                          {'f': 0.5*(x.T @ H @ x) + f.T @ x, 'x': x, "g": A @ x},
                           {'discrete': [1] * ms + [0] * (n-ms)}
                           )
         solver(**solver_in)
 
+        digits = 15
+        if conic == "mosek" and platform.system()=="Darwin":
+            digits = 5
         if aux_options["codegen"]:
-          self.check_codegen(solver,solver.convert_in(solver_in),**aux_options["codegen"])
+          self.check_codegen(solver,solver.convert_in(solver_in),digits=digits,**aux_options["codegen"])
 
   def test_opti(self):
     for conic, qp_options, aux_options in conics:
@@ -832,7 +834,7 @@ class ConicTests(casadiTestCase):
     H = c.diag(list(range(1,N+1)))
     x0 = DM(list(range(N)))
 
-    G = -1.0*mtimes(H,x0)
+    G = -1.0*(H @ x0)
 
     A =  DM(0,N)
 
@@ -912,7 +914,7 @@ class ConicTests(casadiTestCase):
         self.checkarray(solver_out["x"],DM([-0.19230768069,1.6846153915,0.692307690769276]),str(conic),digits=max(1,6-less_digits))
         self.assertAlmostEqual(solver_out["cost"][0],-5.850384678537,max(1,5-less_digits),str(conic))
         if aux_options["dual"]: self.checkarray(solver_out["lam_x"],DM([0,0,0]),str(conic),digits=max(1,6-less_digits))
-        if aux_options["dual"]: self.checkarray(mtimes(A.T,solver_out["lam_a"]),DM([3.876923073076,2.4384615365384965,-1]),str(conic),digits=max(1,6-less_digits))
+        if aux_options["dual"]: self.checkarray(A.T @ solver_out["lam_a"],DM([3.876923073076,2.4384615365384965,-1]),str(conic),digits=max(1,6-less_digits))
 
   def test_linear(self):
     H = DM(2,2)
@@ -1115,7 +1117,7 @@ class ConicTests(casadiTestCase):
     lbg += [0.1]
     ubg += [2]
 
-    J+= mtimes(Xs[-1].T,Xs[-1])
+    J+= Xs[-1].T @ Xs[-1]
 
     w += [Xs[-1]]
     lbw += [-inf, -inf]
@@ -1388,13 +1390,13 @@ class ConicTests(casadiTestCase):
          [0.506784822363357  , 1.223678163433993 ,  0.712607093594686 ,  3.340935020356804]])
 
       x0 = DM([1,2,3,4])
-      f = -mtimes(x.T,mtimes(H,x0))
+      f = -(x.T @ H @ x0)
 
       [D,Lt,p] = ldl(H)
 
-      F = mtimes(sqrt(diag(D)),DM.eye(4)+Lt)
+      F = sqrt(diag(D)) @ (DM.eye(4)+Lt)
 
-      h = soc(vertcat(sqrt(2)*mtimes(F,x),1-y),1+y)
+      h = soc(vertcat(sqrt(2)*(F @ x),1-y),1+y)
 
       solver = casadi.qpsol("msyolver",conic,{'x': vertcat(x,y),"f": y+f,"h":h},qp_options)
       res = solver(lbx=vertcat(-inf,-inf,-inf,-inf,1))

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10.2)
+cmake_minimum_required(VERSION 3.16.3)
 
 # C runtime sources
 set(RUNTIME_SRC
@@ -23,6 +23,17 @@ set(RUNTIME_SRC
   casadi_interpn_interpolate.hpp
   casadi_interpn_weights.hpp
   casadi_kron.hpp
+  casadi_kron_dense.hpp
+  casadi_kron_dense_sparse.hpp
+  casadi_kron_sparse_dense.hpp
+  casadi_kron_contract_inner.hpp
+  casadi_kron_contract_inner_dense.hpp
+  casadi_kron_contract_inner_dense_sparse.hpp
+  casadi_kron_contract_inner_sparse_dense.hpp
+  casadi_kron_contract_outer.hpp
+  casadi_kron_contract_outer_dense.hpp
+  casadi_kron_contract_outer_dense_sparse.hpp
+  casadi_kron_contract_outer_sparse_dense.hpp
   casadi_low.hpp
   casadi_max_viol.hpp
   casadi_mmin.hpp

@@ -244,6 +244,7 @@ namespace casadi {
                   bool ind1=false);
 
     MX operator-() const;
+    MX operator+() const { return *this; }
 
     /** \brief Element-wise inverse
 
@@ -643,6 +644,7 @@ namespace casadi {
     static MX reshape(const MX& x, const Sparsity& sp);
     static MX sparsity_cast(const MX& x, const Sparsity& sp);
     static MX kron(const MX& x, const MX& b);
+    static MX kron_contract(const MX& m, const MX& x, bool inner);
     static MX repmat(const MX& x, casadi_int n, casadi_int m=1);
     ///@}
 
@@ -1095,6 +1097,18 @@ namespace casadi {
   typedef std::vector<MXVector> MXVectorVector;
   typedef std::map<std::string, MX> MXDict;
   ///@}
+
+  /** \brief Kronecker contraction
+   *
+   * `inner = true`:  Y[i, j] = sum over (r, s) of M[i*mB+r, j*nB+s] * X[r, s]
+   * `inner = false`: Y[r, s] = sum over (i, j) of X[i, j] * M[i*mB+r, j*nB+s]
+   *
+   * Closes the AD algebra of kron under arbitrary-order differentiation.
+
+      \identifier{2ho} */
+  inline MX kron_contract(const MX& m, const MX& x, bool inner) {
+    return MX::kron_contract(m, x, inner);
+  }
 
 } // namespace casadi
 

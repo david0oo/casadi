@@ -134,10 +134,10 @@ class MXtests(casadiTestCase):
     self.matrixbinarypool.append(lambda a: fmax(a[0],a[1]),lambda a: fmax(a[0],a[1]),"fmin")
 
     self.matrixbinarypool.append(lambda a: fmin(a[0],a[1]),lambda a: fmin(a[0],a[1]),"fmax")
-    self.matrixbinarypool.append(lambda a: mtimes(a[0],a[1].T),lambda a: numpy.dot(a[0],a[1].T),"mtimes(Matrix,Matrix.T)")
+    self.matrixbinarypool.append(lambda a: a[0] @ a[1].T,lambda a: numpy.dot(a[0],a[1].T),"mtimes(Matrix,Matrix.T)")
     self.matrixbinarypool.append(lambda a: arctan2(a[0],a[1]),lambda a: arctan2(a[0],a[1]),"arctan2")
     #self.matrixbinarypool.append(lambda a: inner_mul(a[0],trans(a[1])),lambda a: c.dot(a[0].T,a[1]),name="inner_mul(Matrix,Matrix)")
-    self.matrixbinarypool.append(lambda a: mtimes(a[0],a[1].T),lambda a: numpy.dot(a[0],a[1].T),"mtimes(Matrix,Matrix.T)")
+    self.matrixbinarypool.append(lambda a: a[0] @ a[1].T,lambda a: numpy.dot(a[0],a[1].T),"mtimes(Matrix,Matrix.T)")
 
   def test_MX1(self):
     self.message("MX constructor")
@@ -776,9 +776,9 @@ class MXtests(casadiTestCase):
     x_ = numpy.random.random((n,1))
     x = MX.sym("x",n,1)
 
-    Axb = mtimes(A,x)+b
-    Dxe = mtimes(D,x)+e
-    a = mtimes(mtimes(Axb.T,C),Dxe)
+    Axb = A @ x+b
+    Dxe = D @ x+e
+    a = Axb.T @ C @ Dxe
 
     f = Function("f", [x,A,b,C,D,e],[a])
     f_out = f(x_, A_, b_, C_, D_, e_)
@@ -837,9 +837,9 @@ class MXtests(casadiTestCase):
     x_ = numpy.random.random((n,1))
     x = MX.sym("x",n,1)
 
-    Axb = mtimes(A,x)+b
-    Dxe = mtimes(D,x)+e
-    a = mtimes(mtimes(Axb.T,C),Dxe)
+    Axb = A @ x+b
+    Dxe = D @ x+e
+    a = Axb.T @ C @ Dxe
 
     f = Function("f", [x,A,b,C,D,e],[a])
     f_out = f(x_, A_, b_, C_, D_, e_)
@@ -907,9 +907,9 @@ class MXtests(casadiTestCase):
     x_ = numpy.random.random((n,1))
     x = MX.sym("x",n,1)
 
-    Axb = mtimes(A,x)+b
-    Dxe = mtimes(D,x)+e
-    a = mtimes(mtimes(Axb.T,C),Dxe)
+    Axb = A @ x+b
+    Dxe = D @ x+e
+    a = Axb.T @ C @ Dxe
 
     f = Function("f", [x,A,b,C,D,e],[a])
     f_out = f(x_, A_, b_, C_, D_, e_)
@@ -1250,7 +1250,7 @@ class MXtests(casadiTestCase):
               out_f   = densify(mtimes(A, B, name))
               out_ref = mtimes(Adense_sym * Amask, Bdense_sym * Bmask, "reference")
               sym_in, val_in = [Adense_sym, Bdense_sym], [Adense_val, Bdense_val]
-              z_sp = mtimes(DM(a_sp, 1.0), DM(b_sp, 1.0)).sparsity()
+              z_sp = (DM(a_sp, 1.0) @  DM(b_sp, 1.0)).sparsity()
             else:
               # mac: Z is dense, supplied explicitly. Output is Z + A*B and
               # already dense, so no densify needed.
@@ -1830,7 +1830,7 @@ class MXtests(casadiTestCase):
 
     filt = Sparsity.diag(N)+Sparsity.triplet(N,N,[1],[3])
 
-    f = Function("f", [x,y],[mtimes(x,y)])
+    f = Function("f", [x,y],[x @ y])
     f_in = (x_, y_)
     g = Function("g", [x,y],[mac(x,y,MX.zeros(filt))])
     g_in = (x_, y_)
@@ -1844,7 +1844,7 @@ class MXtests(casadiTestCase):
 
   def test_mul_zero_wrong(self):
     with self.assertRaises(RuntimeError):
-      mtimes(MX.sym("X",4,5),MX.zeros(3,2))
+      MX.sym("X",4,5) @ MX.zeros(3,2)
 
   def test_vertsplit(self):
     a = MX.sym("X",Sparsity.lower(5))
@@ -2063,14 +2063,14 @@ class MXtests(casadiTestCase):
      a = MX(5,0)
      b = MX(0,3)
 
-     c = mtimes(a,b)
+     c = a @ b
 
      self.assertEqual(c.nnz(),0)
 
      a = MX(5,3)
      b = MX(3,4)
 
-     c = mtimes(a,b)
+     c = a @ b
 
      self.assertEqual(c.nnz(),0)
 
@@ -2394,6 +2394,256 @@ class MXtests(casadiTestCase):
     self.assertEqual(c_.nnz(),a.nnz()*b.nnz())
 
     self.checkarray(c_,numpy.kron(a,b))
+
+    # Kron is its own MXNode: the graph is O(1) regardless of a's size.
+    self.assertEqual(f.n_nodes(), 4)
+
+    # Forward-AD rule kron(dA,B) + kron(A,dB) must hold exactly.
+    dA = MX.sym("dA", A.sparsity())
+    dB = MX.sym("dB", B.sparsity())
+    fwd = jtimes(C, vertcat(vec(A), vec(B)), vertcat(vec(dA), vec(dB)))
+    expected = c.kron(dA, B) + c.kron(A, dB)
+    g = Function("g", [A,B,dA,dB], [fwd - expected])
+    DM.rng(0)
+    diff = g(a, b, DM.rand(A.sparsity()), DM.rand(B.sparsity()))
+    self.assertTrue(float(norm_inf(diff)) < 1e-14)
+
+    # Codegen + serialization round-trips
+    self.check_codegen(f, inputs=f_in)
+    self.check_serialize(f, inputs=f_in)
+    self.checkfunction(f, f.expand(), inputs=f_in)
+    
+    A = SX.sym("A",a.sparsity())
+    B = SX.sym("B",b.sparsity())
+    C = c.kron(A,B)
+
+    fSX = Function("f", [A,B],[C])
+    self.checkfunction(f, fSX, inputs=f_in)
+  def test_kron_flavors(self):
+    # Kron has 4 dispatch paths based on operand sparsity (DenseKron,
+    # DenseSparseKron, SparseDenseKron, and the general sparse-sparse base).
+    # Verify each path: eval against numpy.kron, codegen reload, serialize
+    # round-trip, n_nodes stays O(1).
+    import numpy
+    DM.rng(11)
+    sp_d2 = Sparsity.dense(2, 3)
+    sp_d3 = Sparsity.dense(3, 2)
+    sp_s2 = sparsify(DM([[1, 0, 1], [0, 1, 0]])).sparsity()
+    sp_s3 = sparsify(DM([[1, 0], [1, 1], [0, 1]])).sparsity()
+    cases = [
+        ("dense+dense",  sp_d2, sp_d3),
+        ("dense+sparse", sp_d2, sp_s3),
+        ("sparse+dense", sp_s2, sp_d3),
+        ("sparse+sparse",sp_s2, sp_s3),
+    ]
+    for label, sp_a, sp_b in cases:
+      A = MX.sym("A", sp_a)
+      B = MX.sym("B", sp_b)
+      K = c.kron(A, B)
+      f = Function("f", [A, B], [K])
+      self.assertEqual(f.n_nodes(), 4, label + ": graph not collapsed")
+      a_val = DM.rand(sp_a)
+      b_val = DM.rand(sp_b)
+      ref = numpy.kron(numpy.array(a_val), numpy.array(b_val))
+      self.checkarray(f(a_val, b_val), ref, label)
+      self.check_codegen(f, inputs=[a_val, b_val])
+      self.check_serialize(f, inputs=[a_val, b_val])
+      self.checkfunction(f, f.expand(), inputs=[a_val, b_val])
+
+  def test_kron_contract_flavors(self):
+    # KronContract has 4 dispatch paths (DenseKronContract,
+    # DenseSparseKronContract, SparseDenseKronContract, and base). For each
+    # combination of M-sparsity x X-sparsity x {inner, outer}: verify eval
+    # against a dense numpy reference, codegen round-trip, serialize.
+    import numpy
+    DM.rng(13)
+    def ref_kron_contract(m_np, x_np, inner):
+      mA_mB, nA_nB = m_np.shape
+      xrow, xcol = x_np.shape
+      if inner:
+        mB, nB = xrow, xcol
+        mA, nA = mA_mB // mB, nA_nB // nB
+        y = numpy.zeros((mA, nA))
+        for i in range(mA):
+          for j in range(nA):
+            for r in range(mB):
+              for s in range(nB):
+                y[i, j] += m_np[i*mB+r, j*nB+s] * x_np[r, s]
+      else:
+        mA, nA = xrow, xcol
+        mB, nB = mA_mB // mA, nA_nB // nA
+        y = numpy.zeros((mB, nB))
+        for r in range(mB):
+          for s in range(nB):
+            for i in range(mA):
+              for j in range(nA):
+                y[r, s] += x_np[i, j] * m_np[i*mB+r, j*nB+s]
+      return y
+
+    sp_d2 = Sparsity.dense(2, 3)
+    sp_d3 = Sparsity.dense(3, 2)
+    sp_s2 = sparsify(DM([[1, 0, 1], [0, 1, 0]])).sparsity()
+    sp_s3 = sparsify(DM([[1, 0], [1, 1], [0, 1]])).sparsity()
+    combos = [
+      ("dense_M+dense_X",   sp_d2, sp_d3),
+      ("dense_M+sparse_X",  sp_d2, sp_s3),
+      ("sparse_M+dense_X",  sp_s2, sp_d3),
+      ("sparse_M+sparse_X", sp_s2, sp_s3),
+    ]
+    for label, sp_a, sp_b in combos:
+      sp_m = c.kron(sp_a, sp_b)
+      # inner mode: X has sp_b, output has sp_a (approximately)
+      M_inner = MX.sym("M", sp_m)
+      X_inner = MX.sym("X", sp_b)
+      Yi = c.kron_contract(M_inner, X_inner, True)
+      fi = Function("fi", [M_inner, X_inner], [Yi])
+      mv = DM.rand(sp_m); xv = DM.rand(sp_b)
+      ref = ref_kron_contract(numpy.array(mv), numpy.array(xv), True)
+      # Y may be sparse if both M and X are sparse; compare projected dense.
+      self.checkarray(DM(fi(mv, xv)), DM(ref) * DM.ones(Yi.sparsity()),
+                      label + " inner")
+      self.check_codegen(fi, inputs=[mv, xv])
+      self.check_serialize(fi, inputs=[mv, xv])
+      self.checkfunction(fi, fi.expand(), inputs=[mv, xv])
+      # outer mode: X has sp_a, output has sp_b (approximately)
+      M_outer = MX.sym("M", sp_m)
+      X_outer = MX.sym("X", sp_a)
+      Yo = c.kron_contract(M_outer, X_outer, False)
+      fo = Function("fo", [M_outer, X_outer], [Yo])
+      mv2 = DM.rand(sp_m); xv2 = DM.rand(sp_a)
+      ref2 = ref_kron_contract(numpy.array(mv2), numpy.array(xv2), False)
+      self.checkarray(DM(fo(mv2, xv2)), DM(ref2) * DM.ones(Yo.sparsity()),
+                      label + " outer")
+      self.check_codegen(fo, inputs=[mv2, xv2])
+      self.check_serialize(fo, inputs=[mv2, xv2])
+      self.checkfunction(fo, fo.expand(), inputs=[mv2, xv2])
+     
+  def test_kron_contract_empty_x(self):
+    # Regression: DenseSparseKronContract used to write mA*nA zeros into a
+    # 0-size output buffer when X was a sparse-with-no-nz pattern, corrupting
+    # the heap. Sparsity::kron_contract correctly returns a (mA, nA)-shaped
+    # but nnz=0 output for that case; the dense kernel must short-circuit.
+    sp_x_empty = Sparsity(2, 2)                  # 2x2 with 0 nz
+    sp_m = Sparsity.dense(4, 4)                  # mA=mB=2, nA=nB=2
+    for inner in [True, False]:
+      M = MX.sym("M", sp_m)
+      X = MX.sym("X", sp_x_empty)
+      Y = c.kron_contract(M, X, inner)
+      self.assertEqual(Y.shape, (2, 2))
+      self.assertEqual(Y.nnz(), 0)
+      f = Function("f", [M, X], [Y])
+      DM.rng(0)
+      mv = DM.rand(sp_m); xv = DM(sp_x_empty)
+      out = f(mv, xv)
+      self.assertEqual(out.shape, (2, 2))
+      self.assertEqual(out.nnz(), 0)
+      self.check_codegen(f, inputs=[mv, xv])
+      self.check_serialize(f, inputs=[mv, xv])
+
+  def test_kron_contract(self):
+    DM.rng(7)
+    a = sparsify(DM([[1,0,6],[2,7,0]]))                    # 2x3
+    b = sparsify(DM([[1,0,0],[2,3,7],[0,0,9],[1,12,13]]))  # 4x3
+
+    A = MX.sym("A", a.sparsity())
+    B = MX.sym("B", b.sparsity())
+    K = c.kron(A, B)                                       # 8x9
+    M = MX.sym("M", K.sparsity())
+
+    # ---- forward eval: kron_contract reproduces the math definition ----
+    # inner: Y[i,j] = sum_{r,s} M[i*mB+r, j*nB+s] * B[r,s]
+    Yi = c.kron_contract(M, B, True)
+    self.assertEqual(Yi.size1(), A.size1())
+    self.assertEqual(Yi.size2(), A.size2())
+    # outer: Y[r,s] = sum_{i,j} A[i,j] * M[i*mB+r, j*nB+s]
+    Yo = c.kron_contract(M, A, False)
+    self.assertEqual(Yo.size1(), B.size1())
+    self.assertEqual(Yo.size2(), B.size2())
+
+    f_inner = Function("fi", [M, B], [Yi])
+    f_outer = Function("fo", [M, A], [Yo])
+
+    # Numeric check vs a dense reference computation
+    m_val = DM.rand(K.sparsity())
+    m_np = numpy.array(m_val)
+    a_np = numpy.array(a); b_np = numpy.array(b)
+    mB1, nB1 = b.size1(), b.size2()
+    mA1, nA1 = a.size1(), a.size2()
+    ref_inner = numpy.zeros((mA1, nA1))
+    ref_outer = numpy.zeros((mB1, nB1))
+    for i in range(mA1):
+      for j in range(nA1):
+        ref_inner[i,j] = (m_np[i*mB1:(i+1)*mB1, j*nB1:(j+1)*nB1] * b_np).sum()
+    for r in range(mB1):
+      for s in range(nB1):
+        for i in range(mA1):
+          for j in range(nA1):
+            ref_outer[r,s] += a_np[i,j] * m_np[i*mB1+r, j*nB1+s]
+    self.checkarray(f_inner(m_val, b), ref_inner)
+    self.checkarray(f_outer(m_val, a), ref_outer)
+
+    # ---- AD closure: graph stays O(1) regardless of A's size ----
+    sizes = [3, 5, 10, 20]
+    node_counts = []
+    for n in sizes:
+      Ax = MX.sym("Ax", n, n)
+      Bx = MX.sym("Bx", 3, 3)
+      Kx = c.kron(Ax, Bx)
+      gA = jacobian(vec(Kx), vec(Ax))
+      node_counts.append(Function("f", [Ax, Bx], [gA]).n_nodes())
+    self.assertEqual(min(node_counts), max(node_counts),
+                     "kron jacobian graph must be scale-invariant: %s" % node_counts)
+
+    # ---- AD closure: hessian (second-order) also O(1) ----
+    hess_counts = []
+    for n in sizes:
+      Ax = MX.sym("Ax", n, n)
+      Bx = MX.sym("Bx", 2, 2)
+      Kx = c.kron(Ax, Bx)
+      obj = 0.5 * sumsqr(Kx)
+      x = vertcat(vec(Ax), vec(Bx))
+      H, _ = hessian(obj, x)
+      hess_counts.append(Function("H", [Ax, Bx], [H]).n_nodes())
+    self.assertEqual(min(hess_counts), max(hess_counts),
+                     "kron hessian graph must be scale-invariant: %s" % hess_counts)
+
+    # ---- AD correctness: SX-expand path matches MX-graph path ----
+    # checkfunction_light compares f with f.expand() over the same inputs --
+    # exercises every AD direction implicitly.
+    A2 = MX.sym("A2", 3, 4); B2 = MX.sym("B2", 2, 5)
+    M2 = MX.sym("M2", c.kron(A2, B2).sparsity())
+    for expr, args in [(c.kron_contract(M2, B2, True),  [M2, B2]),
+                       (c.kron_contract(M2, A2, False), [M2, A2])]:
+      f = Function("f", args, [expr])
+      DM.rng(11)
+      inputs = [DM.rand(arg.sparsity()) for arg in args]
+      self.checkfunction_light(f, f.expand(), inputs=inputs)
+
+    # ---- forward + reverse AD via jtimes self-consistency for inner mode ----
+    A3 = MX.sym("A3", 3, 3); B3 = MX.sym("B3", 2, 2)
+    M3 = MX.sym("M3", c.kron(A3, B3).sparsity())
+    Y = c.kron_contract(M3, B3, True)
+    # Closed-form chain rule: d(kron_contract(M, B, inner)) =
+    #   kron_contract(dM, B, inner) + kron_contract(M, dB, inner)
+    dM = MX.sym("dM", M3.sparsity())
+    dB = MX.sym("dB", B3.sparsity())
+    fwd = jtimes(Y, vertcat(vec(M3), vec(B3)), vertcat(vec(dM), vec(dB)))
+    expected = c.kron_contract(dM, B3, True) + c.kron_contract(M3, dB, True)
+    g = Function("g", [M3, B3, dM, dB], [fwd - expected])
+    DM.rng(3)
+    diff = g(DM.rand(M3.sparsity()), DM.rand(B3.sparsity()),
+            DM.rand(M3.sparsity()), DM.rand(B3.sparsity()))
+    self.assertTrue(float(norm_inf(diff)) < 1e-14)
+
+    # ---- codegen + serialization round-trips for both modes ----
+    Av = DM.rand(A2.sparsity()); Bv = DM.rand(B2.sparsity())
+    Mv = DM.rand(M2.sparsity())
+    fi = Function("fi", [M2, B2], [c.kron_contract(M2, B2, True)])
+    fo = Function("fo", [M2, A2], [c.kron_contract(M2, A2, False)])
+    self.check_codegen(fi, inputs=[Mv, Bv])
+    self.check_codegen(fo, inputs=[Mv, Av])
+    self.check_serialize(fi, inputs=[Mv, Bv])
+    self.check_serialize(fo, inputs=[Mv, Av])
 
   def test_project(self):
     x = MX.sym("x",Sparsity.lower(3))
@@ -3197,7 +3447,7 @@ class MXtests(casadiTestCase):
     y0 = numpy.random.random((3,1))
     z0 = numpy.random.random((3,1))
 
-    for e in [(bilin(x,y,z),mtimes(mtimes(y.T,x),z)),(rank1(x,0.3,y,z),x+0.3*mtimes(y,z.T))]:
+    for e in [(bilin(x,y,z),y.T @ x @ z),(rank1(x,0.3,y,z),x+0.3*(y @ z.T))]:
       f = Function('f',[x,y,z],[e[0]])
       fref = Function('fref',[x,y,z],[e[1]])
       f_sx = f.expand()
@@ -3246,7 +3496,7 @@ class MXtests(casadiTestCase):
 
   def test_mtimes_mismatch_segfault(self):
     with self.assertInException("incompatible dimensions"):
-      mtimes(DM(Sparsity.lower(5)),MX.sym('x',100))
+      DM(Sparsity.lower(5)) @ MX.sym('x',100)
 
   def test_monitor(self):
     x = MX.sym("x")
@@ -3593,7 +3843,7 @@ class MXtests(casadiTestCase):
         w = X.sym("w")
         g = Function('g',[z],[z[0]+z[2],z[1]+z[4]],{"never_inline":True})
 
-        [a,b] = g(mtimes(y+x,z))
+        [a,b] = g((y+x) @ z)
         f = Function('f',[x,y,z,w],[sin(a*(7*w)+6)*b],{"print_instructions": True, "print_canonical":True})
         DM.rng(1)
         inputs = [DM.rand(f.sparsity_in(i)) for i in range(f.n_in())]
@@ -3755,8 +4005,8 @@ class MXtests(casadiTestCase):
     Dr= fmax(abs(D),1e-7)
     Dc= fmax(D,1e-7)  # pyright: ignore[reportCallIssue,reportArgumentType]
 
-    Ar_ref = mtimes(mtimes(V,diag(Dr)),V.T)  # pyright: ignore[reportCallIssue,reportArgumentType]
-    Ac_ref = mtimes(mtimes(V,diag(Dc)),V.T)  # pyright: ignore[reportCallIssue,reportArgumentType]
+    Ar_ref = V @ diag(Dr) @ V.T  # pyright: ignore[reportCallIssue,reportArgumentType]
+    Ac_ref = V @ diag(Dc) @ V.T  # pyright: ignore[reportCallIssue,reportArgumentType]
     As = MX.sym("As",A.sparsity())
 
     for opts,ref in [({"strategy":"eigen-reflect"},Ar_ref), ({"strategy":"eigen-clip"},Ac_ref), ({"strategy":"regularize"},A+(4+margin)*DM.eye(A.shape[0]))]:
@@ -3849,7 +4099,7 @@ class MXtests(casadiTestCase):
     y = MX.sym("y",3)
 
     xy = vertcat(y[0],y[1])
-    w = mtimes(MX(sparsify(DM([1,1,0])).sparsity().T,xy),y)
+    w = MX(sparsify(DM([1,1,0])).sparsity().T,xy) @ y
     
     f = Function('f',[y],[w])
     self.checkfunction(f,f.expand(), inputs=[vertcat(1.1,1.3,1.7)])
@@ -4130,8 +4380,8 @@ class MXtests(casadiTestCase):
 
         for expr, ref_const, ref_lin, ref_nonlin in [
                     [(p+x+x*y).T,p.T,x.T,(x*y).T],
-                    [mtimes(p,x),0 , mtimes(p,x), 0],
-                    [mtimes(p+x+x*y,cos(p)+7*x+3*x*y), mtimes(p,cos(p)), mtimes(p,7*x)+mtimes(x,cos(p)), mtimes(p,3*x*y)+mtimes(x,7*x+3*x*y)+mtimes(x*y,cos(p)+7*x+3*x*y)]
+                    [p @ x,0 , p @ x, 0],
+                    [(p+x+x*y) @ (cos(p)+7*x+3*x*y), p @ cos(p), p @ (7*x)+x @ cos(p), p @ (3*x*y)+x @ (7*x+3*x*y)+x*y @ (cos(p)+7*x+3*x*y)]
                     ]:
 
             print("ref",expr,ref_const,ref_lin,ref_nonlin)
@@ -4172,21 +4422,21 @@ class MXtests(casadiTestCase):
 
         B = DM([[1.7,1.1],[6,0],[0,1.2]])
         Bsp = sparsify(B)
-        [p1,p2] = vertsplit(9*vertcat(3,3*x,mtimes(y,x)),[0,2,7])
+        [p1,p2] = vertsplit(9*vertcat(3,3*x,y @ x),[0,2,7])
         [p1c,p2c] = vertsplit(9*vertcat(3,DM.zeros(3,1),DM.zeros(3,1)),[0,2,7])
         [p1l,p2l] = vertsplit(9*vertcat(0,3*x,DM.zeros(3,1)),[0,2,7])
-        [p1n,p2n] = vertsplit(9*vertcat(0,DM.zeros(3,1),mtimes(y,x)),[0,2,7])
-        E = (9*vertcat(3,3*x,mtimes(y,x))).nz[[2,3,0,4,6,6]]
+        [p1n,p2n] = vertsplit(9*vertcat(0,DM.zeros(3,1),y @ x),[0,2,7])
+        E = (9*vertcat(3,3*x,y @ x)).nz[[2,3,0,4,6,6]]
         Ec = (9*vertcat(3,DM.zeros(3,1),DM.zeros(3,1))).nz[[2,3,0,4,6,6]]
         El = (9*vertcat(0,3*x,DM.zeros(3,1))).nz[[2,3,0,4,6,6]]
-        En = (9*vertcat(0,DM.zeros(3,1),mtimes(y,x))).nz[[2,3,0,4,6,6]]
+        En = (9*vertcat(0,DM.zeros(3,1),y @ x)).nz[[2,3,0,4,6,6]]
 
         
         for expr, ref_const, ref_lin, ref_nonlin in [
-                    [mtimes(A,x)+mtimes(B,z),DM.zeros(3,1) , mtimes(A,x), mtimes(B,z)],
-                    [mtimes(Asp,x)+mtimes(Bsp,z),DM.zeros(3,1) , mtimes(Asp,x), mtimes(Bsp,z)],
-                    [vertcat(3*x+mtimes(y,x),9*z),DM.zeros(5,1),vertcat(3*x,DM.zeros(2,1)), vertcat(mtimes(y,x),9*z) ],
-                    [7*vertcat(3*x+mtimes(y,x),9*z),DM.zeros(5,1),7*vertcat(3*x,DM.zeros(2,1)), 7*vertcat(mtimes(y,x),9*z) ],
+                    [A @ x+B @ z,DM.zeros(3,1) , A @ x, B @ z],
+                    [Asp @ x+Bsp @ z,DM.zeros(3,1) , Asp @ x, Bsp @ z],
+                    [vertcat(3*x+y @ x,9*z),DM.zeros(5,1),vertcat(3*x,DM.zeros(2,1)), vertcat(y @ x,9*z) ],
+                    [7*vertcat(3*x+y @ x,9*z),DM.zeros(5,1),7*vertcat(3*x,DM.zeros(2,1)), 7*vertcat(y @ x,9*z) ],
                     [9*p2, 9*p2c, 9*p2l, 9*p2n],
                     [E,Ec,El,En]
                     ]:
@@ -4430,18 +4680,23 @@ class MXtests(casadiTestCase):
 
   def test_sum(self):
     test_cases = [DM(4), horzcat(1,2),vertcat(1,2),blockcat([[1,2],[3,4]]),blockcat([[1,2,3],[3,4,5]]),blockcat([[1,2],[3,4],[6,9]])]
-    
+
+    # np.sum on casadi types now stays in the casadi type system: the
+    # axis-aware result is 2-D (matching casadi's column convention)
+    # whereas numpy collapses to 1-D.  Reshape numpy's reference to
+    # match the casadi shape for comparison.
     for e in test_cases:
-        res = np.array(np.sum(e))
-        ref = np.sum(np.array(e))
-        self.checkarray(res,ref)
-        res = np.array(np.sum(e,0))
-        ref = np.sum(np.array(e),0)
-        self.checkarray(res,ref)
-        res = np.array(np.sum(e,1))
-        ref = np.sum(np.array(e),1)
-        self.checkarray(res,ref)
-        
+        ref_total = np.sum(np.array(e))
+        self.checkarray(np.array(np.sum(e)).reshape(()), ref_total)
+        # axis=0: casadi shape (1, n);  numpy shape (n,)
+        res = np.array(np.sum(e, 0))
+        ref = np.sum(np.array(e), 0).reshape(res.shape)
+        self.checkarray(res, ref)
+        # axis=1: casadi shape (m, 1);  numpy shape (m,)
+        res = np.array(np.sum(e, 1))
+        ref = np.sum(np.array(e), 1).reshape(res.shape)
+        self.checkarray(res, ref)
+
         with self.assertInException("axis 2 is out of bound"):
             np.sum(e,2)
 
@@ -4463,12 +4718,12 @@ class MXtests(casadiTestCase):
                     for my in [4,1,0]:
                         for bm in [1,3,0]:
                             if bm!=1 and my==0: continue # ambiguous construction
-                            y = mtimes(mtimes(DM.rand(ny,nx), x),DM.rand(mx,my))
+                            y = DM.rand(ny,nx) @  x @ DM.rand(mx,my)
                             assert y.shape==(ny,my)
                             yb = DM.rand(ny,my*bm)
                             
                             r = jtimes(y,x,yb,True)
-                            r_ref = hcat([mtimes(jacobian(y,vec(x)).T,vec(e)).reshape(x.shape) for e in horzsplit(yb,max(1,my))])
+                            r_ref = hcat([(jacobian(y,vec(x)).T @ vec(e)).reshape(x.shape) for e in horzsplit(yb,max(1,my))])
                             self.assertTrue(r.shape==(nx,mx*bm))
                             f = Function('f',[x],[r])
                             f_ref = Function('f',[x],[r_ref])
@@ -4480,12 +4735,12 @@ class MXtests(casadiTestCase):
                     for my in [4,1,0]:
                         for bm in [1,3,0]:
                             if bm!=1 and mx==0: continue # ambiguous construction
-                            y = mtimes(mtimes(DM.rand(ny,nx), x),DM.rand(mx,my))
+                            y = DM.rand(ny,nx) @  x @ DM.rand(mx,my)
                             assert y.shape==(ny,my)
                             dx = DM.rand(nx,mx*bm)
 
                             r = jtimes(y,x,dx)
-                            r_ref = hcat([mtimes(jacobian(y,vec(x)),vec(e)).reshape(y.shape) for e in horzsplit(dx,max(1,mx))])
+                            r_ref = hcat([(jacobian(y,vec(x)) @ vec(e)).reshape(y.shape) for e in horzsplit(dx,max(1,mx))])
                             
                             self.assertTrue(r.shape==(ny,my*bm))
                             f = Function('f',[x],[r])
@@ -4591,7 +4846,7 @@ class MXtests(casadiTestCase):
     Jf_ref = Function('J_ref',[u],[jacobian(e,u)])
     
     J_v_u = solve(DM.eye(vdef.size1())-jacobian(vdef,v),jacobian(vdef,u))
-    J = jacobian(vexpr,u) + mtimes(jacobian(vexpr,v), J_v_u)
+    J = jacobian(vexpr,u) + jacobian(vexpr,v) @  J_v_u
 
     [vexpr,v,vdef] = res
     

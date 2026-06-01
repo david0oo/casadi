@@ -2070,8 +2070,10 @@ int FixedStepIntegrator::advance_noevent(IntegratorMemory* mem) const {
     }
   }
 
-  // Save algebraic variables
-  casadi_copy(m->v + nv_ - nz_, nz_, m->z);
+  // Save algebraic variables (extracted from the tail of each augmented v block)
+  for (casadi_int d = 0; d <= nfwd_; ++d) {
+    casadi_copy(m->v + (d + 1) * nv1_ - nz1_, nz1_, m->z + d * nz1_);
+  }
 
   return 0;
 }
@@ -2172,6 +2174,11 @@ void FixedStepIntegrator::stepB(FixedStepMemory* m, double t, double h,
   m->res[BSTEP_ADJ_V0] = nullptr;  // adj:v0
   m->res[BSTEP_ADJ_P] = adj_p;  // adj:p
   m->res[BSTEP_ADJ_U] = adj_u;  // adj:u
+  // Issue #3353: zero-init when adj_* output is structurally empty
+  const Function& adj_step = get_function(reverse_name("step", nadj_));
+  if (adj_x0 && !adj_step.nnz_out(BSTEP_ADJ_X0)) casadi_clear(adj_x0, nrx1_ * nadj_);
+  if (adj_p && !adj_step.nnz_out(BSTEP_ADJ_P)) casadi_clear(adj_p, nrq1_ * nadj_);
+  if (adj_u && !adj_step.nnz_out(BSTEP_ADJ_U)) casadi_clear(adj_u, nuq1_ * nadj_);
   calc_function(m, reverse_name("step", nadj_));
   // Evaluate sensitivities
   if (nfwd_ > 0) {
@@ -2199,6 +2206,14 @@ void FixedStepIntegrator::stepB(FixedStepMemory* m, double t, double h,
     m->res[BSTEP_ADJ_V0] = nullptr;  // fwd:adj:v0
     m->res[BSTEP_ADJ_P] = adj_p + nrq1_ * nadj_;  // fwd:adj_p
     m->res[BSTEP_ADJ_U] = adj_u + nuq1_ * nadj_;  // fwd:adj_u
+    const Function& fwd_adj_step =
+      get_function(forward_name(reverse_name("step", nadj_), nfwd_));
+    if (adj_x0 && !fwd_adj_step.nnz_out(BSTEP_ADJ_X0))
+      casadi_clear(adj_x0 + nrx1_ * nadj_, nrx1_ * nadj_ * nfwd_);
+    if (adj_p && !fwd_adj_step.nnz_out(BSTEP_ADJ_P))
+      casadi_clear(adj_p + nrq1_ * nadj_, nrq1_ * nadj_ * nfwd_);
+    if (adj_u && !fwd_adj_step.nnz_out(BSTEP_ADJ_U))
+      casadi_clear(adj_u + nuq1_ * nadj_, nuq1_ * nadj_ * nfwd_);
     calc_function(m, forward_name(reverse_name("step", nadj_), nfwd_));
   }
 }
@@ -2245,8 +2260,14 @@ void FixedStepIntegrator::impulseB(IntegratorMemory* mem,
   // Add impulse to state
   casadi_axpy(nrx_, 1., adj_x, m->adj_x);
 
-  // Add impulse to backwards dependent variables
-  casadi_axpy(nrz_, 1., adj_z, m->rv + nrv_ - nrz_);
+  // Add impulse to backwards dependent variables (one slot at the tail of each
+  // augmented block of m->rv; mirrors the algebraic-state extraction in
+  // advance_noevent)
+  casadi_int nrz_per_block = nrz1_ * nadj_;
+  for (casadi_int d = 0; d <= nfwd_; ++d) {
+    casadi_axpy(nrz_per_block, 1., adj_z + d * nrz_per_block,
+                m->rv + (d + 1) * nrv1_ - nrz_per_block);
+  }
 }
 
 ImplicitFixedStepIntegrator::ImplicitFixedStepIntegrator(
