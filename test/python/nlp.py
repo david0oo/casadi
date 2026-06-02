@@ -54,9 +54,10 @@ if "SKIP_SLEQP_TESTS" not in os.environ and has_nlpsol("sleqp"):
 
 if "SKIP_UNO_TESTS" not in os.environ and has_nlpsol("uno"):
   uno_codegen = {"std": "c99", "extralibs": ["uno"],"extra_include": ["uno"]}
-  solvers.append(("uno",{"print_time":False,"uno": {"preset": "ipopt", "primal_tolerance":1e-12, "dual_tolerance":1e-12}}, {"codegen": uno_codegen, "discrete": False}))
-  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp", "primal_tolerance":1e-12, "dual_tolerance":1e-12}}, {"codegen": uno_codegen, "discrete": False}))
-  solvers.append(("uno",{"print_time":False,"uno": {"preset": "funnelsqp", "primal_tolerance":1e-12, "dual_tolerance":1e-12}}, {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "ipopt", "primal_tolerance":1e-8, "dual_tolerance":1e-8}}, {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "funnelsqp", "primal_tolerance":1e-8, "dual_tolerance":1e-8}}, {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp", "primal_tolerance":1e-8, "dual_tolerance":1e-8}}, {"codegen": uno_codegen, "discrete": False}))
+  solvers.append(("uno",{"print_time":False,"uno": {"preset": "filtersqp", "primal_tolerance":1e-8, "dual_tolerance":1e-8, "hessian_model": "LBFGS"}}, {"codegen": uno_codegen, "discrete": False}))
 
 if "SKIP_ALPAQA_TESTS" not in os.environ and has_nlpsol("alpaqa"):
   solvers.append(("alpaqa",{"print_time":False,"alpaqa": {"alm.tolerance": 1e-10, "alm.dual_tolerance": 1e-10, "alm.penalty_update_factor": 10, "alm.max_iter": 3000, "alm.print_interval": 1, "panoc.max_iter": 500, "panoc.print_interval": 1, "lbfgs.memory": 2}},{"codegen": False,"discrete":False}))

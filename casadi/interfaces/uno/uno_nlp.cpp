@@ -85,10 +85,17 @@ void set_uno_option(void* solver, const std::string& name, const GenericType& va
 
 void insert_casadi_options(void* solver, Dict opts) {
   Dict casadi_options = Options::sanitize(opts);
+  // We need to split this up since the preset overwrites some options.
+  // e.g., when we want L-BFGS, the preset would overwrite the Hessian model to
+  // exact Hessian 
   for (auto&& op : casadi_options) {
     if (op.first == "preset") {
       uno_set_solver_preset(solver, op.second.to_string().c_str());
-    } else {
+      break;
+    }
+  }
+  for (auto&& op : casadi_options) {
+    if (op.first != "preset") {
       set_uno_option(solver, op.first, op.second);
     }
   }
